@@ -141,9 +141,10 @@
             ${field('l<sub>f,y</sub> flambement axe y', `<div class="inline">${inp('lfy', { dis: s.link.lfy })}</div>`, 'm')}
             ${field('l<sub>f,z</sub> flambement axe z', `<div class="inline">${inp('lfz', { dis: s.link.lfz })}</div>`, 'm')}
             ${field('l<sub>ef</sub> déversement', `<div class="inline">${inp('lef', { dis: s.link.lef })}</div>`, 'm')}
+            ${field('l<sub>ef,inv</sub> déversement sous soulèvement', `<div class="inline">${inp('lefUp', { dis: s.link.lefUp })}</div>`, 'm', 'Moment inversé : fibre inférieure comprimée, souvent non maintenue.')}
           </div>
           <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
-            ${chk('link.lfy', 'l<sub>f,y</sub> = L', true)} ${chk('link.lfz', 'l<sub>f,z</sub> = L', true)} ${chk('link.lef', 'l<sub>ef</sub> = L', true)}
+            ${chk('link.lfy', 'l<sub>f,y</sub> = L', true)} ${chk('link.lfz', 'l<sub>f,z</sub> = L', true)} ${chk('link.lef', 'l<sub>ef</sub> = L', true)} ${chk('link.lefUp', 'l<sub>ef,inv</sub> = L', true)}
           </div>
           <p class="note">Tableau 6.1 : poutre sur appuis simples sous charge répartie, l<sub>ef</sub> = 0,9·L ; charge sur la fibre comprimée : + 2h, sur la fibre tendue : − 0,5h. Saisir 0 si l'élément est maintenu en continu (k<sub>c</sub> ou k<sub>crit</sub> = 1).</p>
         </div>
@@ -167,7 +168,7 @@
       <details class="fold" style="margin-top:14px">
         <summary>Durées de chargement et options de combinaison</summary>
         <div class="fields" style="margin:6px 0 10px">
-          ${['Q1', 'Q2', 'S', 'W'].map((c) => field('Durée ' + c, sel('durations.' + c, durOptions()), '', 'Auto : ' + (D.DURATIONS.find((d) => d[0] === R.durationOf(c)) || [])[1])).join('')}
+          ${['Q1', 'Q2', 'S', 'W', 'Wu'].map((c) => field('Durée ' + ({ W: 'W↓', Wu: 'W↑' }[c] || c), sel('durations.' + c, durOptions()), '', 'Auto : ' + (D.DURATIONS.find((d) => d[0] === R.durationOf(c)) || [])[1])).join('')}
         </div>
         <div class="fields wide">
           ${field('Feu : action variable dominante', sel('options.fireLead', [['psi1', 'ψ1,1·Q1 (valeur fréquente)'], ['psi2', 'ψ2,1·Q1 (quasi-permanente)']]))}
@@ -209,7 +210,7 @@
       return `<div class="fields wide">
         ${field('Unités du tableau', sel('loads.unit', [['daN', 'daN et daN·m'], ['kN', 'kN et kN·m']], { rerender: true }))}
         </div>
-        <p class="note">Saisir les sollicitations <b>caractéristiques</b> de chaque cas unitaire (valeurs max. de l'élément). Convention : F<sub>x</sub> &gt; 0 en compression. Un bloc copié depuis Excel ou GSA (tabulations) peut être collé directement dans une cellule : il remplit le tableau vers la droite et vers le bas.</p>`;
+        <p class="note">Saisir les sollicitations <b>caractéristiques</b> de chaque cas unitaire (valeurs max. de l'élément). Convention : F<sub>x</sub> &gt; 0 en compression. <b>Les signes sont conservés</b> : saisir chaque cas avec le signe donné par le modèle (ex. M<sub>y</sub> positif sous charges gravitaires, négatif sous W↑ — ou l'inverse, peu importe). W↓ et W↑ ne sont jamais combinés ensemble ; le sens « gravitaire » est celui des charges permanentes. Un bloc copié depuis Excel ou GSA (tabulations) peut être collé directement dans une cellule : il remplit le tableau vers la droite et vers le bas.</p>`;
     }
     if (m === 'poutre') {
       const P = 'loads.poutre.';
@@ -225,13 +226,13 @@
         </div>
         <div>
           <div class="tbl-wrap"><table class="grid">
-            <thead><tr><th class="rowh">Charges surfaciques [daN/m²]</th>${['G', 'G fragile', 'Q1', 'Q2', 'S', 'W'].map((x) => `<th>${x}</th>`).join('')}</tr></thead>
+            <thead><tr><th class="rowh">Charges surfaciques [daN/m²]</th>${['G', 'G fragile', 'Q1', 'Q2', 'S', 'W↓', 'W↑ soulèvement'].map((x) => `<th>${x}</th>`).join('')}</tr></thead>
             <tbody>
-              <tr><td class="rowh">Axe fort <small>(⊥ à b)</small></td>${['G', 'Gf', 'Q1', 'Q2', 'S', 'W'].map((c) => row('strong', c)).join('')}</tr>
-              <tr><td class="rowh">Axe faible <small>(⊥ à h)</small></td>${['G', 'Gf', 'Q1', 'Q2', 'S', 'W'].map((c) => row('weak', c)).join('')}</tr>
+              <tr><td class="rowh">Axe fort <small>(⊥ à b)</small></td>${['G', 'Gf', 'Q1', 'Q2', 'S', 'W', 'Wu'].map((c) => row('strong', c)).join('')}</tr>
+              <tr><td class="rowh">Axe faible <small>(⊥ à h)</small></td>${['G', 'Gf', 'Q1', 'Q2', 'S', 'W', 'Wu'].map((c) => row('weak', c)).join('')}</tr>
             </tbody></table></div>
           <div style="margin-top:10px">${chk(P + 'facadeFragile', 'Charge de façade considérée comme G fragile')}</div>
-          <p class="note">Poutre bi-articulée sous charge uniforme : M = q·L²/8, V = q·L/2 ; PP calculé avec ρ<sub>mean</sub>. Le rampant et le dévers répartissent les charges sur les deux axes ; F<sub>x</sub> = q·L·sin(rampant).</p>
+          <p class="note">Poutre bi-articulée sous charge uniforme : M = q·L²/8, V = q·L/2 ; PP calculé avec ρ<sub>mean</sub>. Le rampant et le dévers répartissent les charges sur les deux axes ; F<sub>x</sub> = q·L·sin(rampant). <b>W↑</b> : saisir la dépression en valeur positive, elle est appliquée vers le haut (sollicitations de signe opposé à G).</p>
         </div>
       </div>`;
     }
@@ -255,11 +256,16 @@
         <div class="tbl-wrap"><table class="grid">
           <thead><tr><th class="rowh">Vent</th><th>w [daN/m²]</th><th>bande [m]</th><th>moment</th></tr></thead>
           <tbody>
-            <tr><td class="rowh">W — type 1</td><td>${inp(P + 'W1')}</td><td>${inp(P + 'BW1')}</td><td>${sel(P + 'axW1', [['Y', 'My'], ['Z', 'Mz']])}</td></tr>
-            <tr><td class="rowh">W — type 2</td><td>${inp(P + 'W2')}</td><td>${inp(P + 'BW2')}</td><td>${sel(P + 'axW2', [['Y', 'My'], ['Z', 'Mz']])}</td></tr>
+            <tr><td class="rowh">W latéral — type 1</td><td>${inp(P + 'W1')}</td><td>${inp(P + 'BW1')}</td><td>${sel(P + 'axW1', [['Y', 'My'], ['Z', 'Mz']])}</td></tr>
+            <tr><td class="rowh">W latéral — type 2</td><td>${inp(P + 'W2')}</td><td>${inp(P + 'BW2')}</td><td>${sel(P + 'axW2', [['Y', 'My'], ['Z', 'Mz']])}</td></tr>
           </tbody></table></div>
-        <div class="fields" style="margin-top:12px">${field('Hauteur de reprise du vent', inp(P + 'H', { ph: 'L' }), 'm', 'Vide = L. M = w·B·H²/8.')}</div>
-        <p class="note">PP du poteau en effort normal (ρ<sub>mean</sub>·b·h·L). Vent : poteau bi-articulé sous charge répartie.</p>
+        <div class="fields" style="margin-top:12px">
+          ${field('Hauteur de reprise du vent', inp(P + 'H', { ph: 'L' }), 'm', 'Vide = L. M = w·B·H²/8.')}
+          ${field('Toiture : vent descendant W↓', inp(P + 'Wd'), 'daN/m²', '× surface reprise → compression.')}
+          ${field('Toiture : soulèvement W↑', inp(P + 'Wu'), 'daN/m²', 'Valeur positive → traction dans le poteau.')}
+        </div>
+        <div style="margin-top:10px">${chk(P + 'WuLateral', 'Le vent latéral accompagne aussi le cas de soulèvement W↑')}</div>
+        <p class="note">PP du poteau en effort normal (ρ<sub>mean</sub>·b·h·L). Vent latéral : poteau bi-articulé sous charge répartie, affecté au cas W↓ (et à W↑ si coché). W↓ et W↑ ne sont jamais combinés ensemble.</p>
       </div>
     </div>`;
   }
@@ -333,7 +339,7 @@
     return `<div class="tbl-wrap"><table class="tbl compact">
       <tr><th>Combinaison dimensionnante</th><th colspan="3">${esc(c.id)} — ${esc(c.label)}</th></tr>
       <tr><td>Efforts de calcul</td><td colspan="3">N = ${fmtG(c.eff.N / 1e3, 2)} kN · M<sub>y</sub> = ${fmtG(c.eff.My / 1e6, 2)} kN·m · M<sub>z</sub> = ${fmtG(c.eff.Mz / 1e6, 2)} kN·m · V<sub>z</sub> = ${fmtG(c.eff.Vz / 1e3, 2)} kN · V<sub>y</sub> = ${fmtG(c.eff.Vy / 1e3, 2)} kN</td></tr>
-      <tr><td>Coefficients</td><td colspan="3">k<sub>mod</sub> = ${fmt(c.kmod, 2)} (${(D.DURATIONS.find((d) => d[0] === c.dur) || ['', ''])[1].toLowerCase()}) · γ<sub>M</sub> = ${fmt(c.gamma, 2)} · k<sub>cr</sub> = ${fmt(c.kcr, 2)} · k<sub>c,y</sub> = ${fmt(inst ? inst.y.kc : 1, 3)} · k<sub>c,z</sub> = ${fmt(inst ? inst.z.kc : 1, 3)} · k<sub>crit</sub> = ${fmt(inst ? inst.lt.kcrit : 1, 3)}</td></tr>
+      <tr><td>Coefficients</td><td colspan="3">k<sub>mod</sub> = ${fmt(c.kmod, 2)} (${(D.DURATIONS.find((d) => d[0] === c.dur) || ['', ''])[1].toLowerCase()}) · γ<sub>M</sub> = ${fmt(c.gamma, 2)} · k<sub>cr</sub> = ${fmt(c.kcr, 2)} · k<sub>c,y</sub> = ${fmt(inst ? inst.y.kc : 1, 3)} · k<sub>c,z</sub> = ${fmt(inst ? inst.z.kc : 1, 3)} · k<sub>crit</sub> = ${fmt(c.kcrit, 3)}${c.reversed ? ' <b>(moment inversé, l<sub>ef,inv</sub>)</b>' : ''}</td></tr>
       <tr><th>Contrainte</th><th class="num">σ [MPa]</th><th>Résistance</th><th class="num">f<sub>d</sub> [MPa]</th></tr>
       ${st.comp || st.tens ? `<tr><td>${st.comp ? 'σ<sub>c,0,d</sub>' : 'σ<sub>t,0,d</sub>'} = N / A${fireSec ? '<sub>fi</sub>' : ''}</td><td class="num">${F(st.sN)}</td><td>${st.comp ? 'f<sub>c,0,d</sub>' : 'f<sub>t,0,d</sub>'}</td><td class="num">${F(st.comp ? fd.c : fd.t)}</td></tr>` : ''}
       <tr><td>σ<sub>m,y,d</sub> = M<sub>y</sub> / W<sub>y</sub></td><td class="num">${F(st.smy)}</td><td>f<sub>m,y,d</sub></td><td class="num">${F(fd.my)}</td></tr>
@@ -489,6 +495,7 @@
             <li><b>ψ</b> figés dans la table des combinaisons (0,7 / 0,5 / 0,6 à l'ELU ; valeurs du feu ressaisies à la main) : désormais tirés des catégories choisies (ex. cat. E : ψ<sub>0</sub> = 1,0 ; cat. H : 0).</li>
             <li><b>Feu sans durée requise</b> : la section réduite de 7 mm était quand même vérifiée et pouvait dimensionner. Et k<sub>0</sub> était calculé mais pas utilisé (d<sub>ef</sub> = d<sub>char</sub> + k<sub>0</sub>·d<sub>0</sub>).</li>
             <li><b>G favorable</b> absent (pas de 1,0·G + 1,5·W) : ajouté.</li>
+            <li><b>Signes</b> : avec des cas de signes opposés (gravitaire +, soulèvement −), les contraintes M/W négatives donnaient des taux négatifs que MAX() ignorait, (σ/f)² rendait le déversement positif et la flèche était prise par MAX() signé. Ici, les contraintes sont prises en valeur absolue, le soulèvement W↑ est un cas distinct de W↓ (jamais combinés), un moment de signe opposé à G est vérifié au déversement avec l<sub>ef,inv</sub>, et les flèches sont enveloppées dans les deux sens.</li>
             <li><b>Poteau</b> : k<sub>mod</sub> écrit en dur (pas de classe de service 3) et flèche active = w<sub>inst</sub>(PP+G) au lieu de w<sub>fin</sub> − w<sub>inst</sub>(PP+G).</li>
             <li><b>Poutre</b> : les listes « Poteau/Poutre » et « À chant/À plat » n'étaient reliées à aucun calcul.</li>
             <li><b>k<sub>h</sub></b> : sur b pour M<sub>z</sub>, sur max(b,h) en traction, k<sub>h</sub> = 1 pour ρ<sub>k</sub> &gt; 700 ; pas de k<sub>h</sub> au feu.</li>
@@ -625,7 +632,7 @@
     set(t.dataset.p, v);
     // longueurs liées à L
     if (t.dataset.p === 'L' || t.dataset.p.startsWith('link.')) {
-      ['lfy', 'lfz', 'lef'].forEach((k) => {
+      ['lfy', 'lfz', 'lef', 'lefUp'].forEach((k) => {
         if (state.link[k]) { state[k] = state.L; const el = $(`[data-p="${k}"]`); if (el) { el.value = state.L; } }
         const el = $(`[data-p="${k}"]`); if (el) el.disabled = !!state.link[k];
       });

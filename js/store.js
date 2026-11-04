@@ -13,7 +13,7 @@
     D.EFFECTS.forEach((e) => { t[e.id] = {}; D.CASES.forEach((c) => { t[e.id][c.id] = ''; }); });
     return t;
   }
-  const loads = () => ({ G: '', Gf: '', Q1: '', Q2: '', S: '', W: '' });
+  const loads = () => ({ G: '', Gf: '', Q1: '', Q2: '', S: '', W: '', Wu: '' });
 
   function defaultState() {
     const direct = emptyTable();
@@ -25,11 +25,11 @@
       elemType: 'poutre',
       b: 100, h: 275, L: 4.5,
       grade: 'C24', serviceClass: 1, ksys: 1,
-      lfy: 4.5, lfz: 4.5, lef: 4.5, link: { lfy: true, lfz: true, lef: true },
+      lfy: 4.5, lfz: 4.5, lef: 4.5, lefUp: 4.5, link: { lfy: true, lfz: true, lef: true, lefUp: true },
       fire: { t: 0, facesB: 2, facesH: 1 },
       categories: { Q1: 'Cat. A', Q2: 'Cat. A' },
       altitudeHigh: false,
-      durations: { Q1: 'auto', Q2: 'auto', S: 'auto', W: 'auto' },
+      durations: { Q1: 'auto', Q2: 'auto', S: 'auto', W: 'auto', Wu: 'auto' },
       options: { gFav: true, fireLead: 'psi1', seisKmod: 1.1, seisGammaM: 'fund', kcrMode: 'auto', devMz: true },
       sls: { mode: 'calc', Lref: '', limits: { inst: 300, fin: 250, act: 500 }, uy: {}, uz: {} },
       loads: {
@@ -42,7 +42,7 @@
         },
         poteau: {
           S: 10, G1: 250, nG1: 1, G2: 0, nG2: 0, Gf: 100, nGf: 1, Q1: 150, nQ1: 1, Q2: 0, nQ2: 0, S_: 0, nS: 0,
-          H: '', W1: 0, BW1: 0, axW1: 'Y', W2: 0, BW2: 0, axW2: 'Z'
+          H: '', W1: 0, BW1: 0, axW1: 'Y', W2: 0, BW2: 0, axW2: 'Z', Wd: 0, Wu: 0, WuLateral: true
         }
       }
     };
@@ -51,6 +51,7 @@
   // fusion profonde : complète un état ancien avec les champs par défaut
   function upgrade(s) {
     const d = defaultState();
+    if (s.lefUp === undefined) { s.lefUp = s.lef; if (s.link) s.link.lefUp = !!s.link.lef; }
     (function merge(dst, src) {
       Object.keys(src).forEach((k) => {
         if (dst[k] === undefined) dst[k] = src[k];

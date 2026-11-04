@@ -9,7 +9,8 @@
   const D = window.LIGNUM_DATA;
   const KM = 0.7;      // km section rectangulaire (6.1.6)
   const D0 = 7;        // mm, couche à résistance nulle (EN 1995-1-2 4.2.2)
-  const VAR = ['Q1', 'Q2', 'S', 'W'];
+  const VAR = ['Q1', 'Q2', 'S', 'W', 'Wu'];
+  const WIND = ['W', 'Wu'];               // deux cas de vent exclusifs l'un de l'autre
   const GPERM = ['PP', 'G', 'Gf'];
   const SEIS = ['EXp', 'EXm', 'EYp', 'EYm'];
   const EFF = ['N', 'My', 'Mz', 'Vz', 'Vy'];
@@ -62,9 +63,11 @@
     const qpp = b * h * mat.rhomean / 1e6;                   // kg/m ≈ daN/m
     out.PP = make(qpp, 0);
     // PP : composante d'axe faible uniquement par le dévers (q faible = 0)
-    ['G', 'Gf', 'Q1', 'Q2', 'S', 'W'].forEach((c) => {
-      let q1 = num(P.B) * num(P.strong[c]);
-      const q2 = num(P.Bz) * num(P.weak[c]);
+    // le soulèvement (Wu) est saisi en valeur positive et appliqué en sens inverse de la pesanteur
+    ['G', 'Gf', 'Q1', 'Q2', 'S', 'W', 'Wu'].forEach((c) => {
+      const sg = c === 'Wu' ? -1 : 1;
+      let q1 = sg * num(P.B) * num(P.strong[c]);
+      const q2 = sg * num(P.Bz) * num(P.weak[c]);
       if (c === 'G' && !P.facadeFragile) q1 += facade;
       if (c === 'Gf' && P.facadeFragile) q1 += facade;
       out[c] = make(q1, q2);
@@ -78,7 +81,7 @@
     const A = num(P.S);
     const zero = () => ({ N: 0, My: 0, Mz: 0, Vz: 0, Vy: 0 });
     const out = {};
-    ['PP', 'G', 'Gf', 'Q1', 'Q2', 'S', 'W'].concat(SEIS).forEach((c) => { out[c] = zero(); });
+    ['PP', 'G', 'Gf', 'Q1', 'Q2', 'S', 'W', 'Wu'].concat(SEIS).forEach((c) => { out[c] = zero(); });
     out.PP.N = b * h * mat.rhomean / 1e6 * L;
     out.G.N = A * (num(P.G1) * num(P.nG1) + num(P.G2) * num(P.nG2));
     out.Gf.N = A * num(P.Gf) * num(P.nGf);
@@ -88,9 +91,15 @@
     const H = num(P.H) || L;
     [[P.W1, P.BW1, P.axW1], [P.W2, P.BW2, P.axW2]].forEach(([w, B, ax]) => {
       const q = num(w) * num(B);
-      if (ax === 'Z') { out.W.Mz += q * H * H / 8; out.W.Vy += q * H / 2; }
-      else { out.W.My += q * H * H / 8; out.W.Vz += q * H / 2; }
+      const targets = P.WuLateral !== false ? [out.W, out.Wu] : [out.W];
+      targets.forEach((o) => {
+        if (ax === 'Z') { o.Mz += q * H * H / 8; o.Vy += q * H / 2; }
+        else { o.My += q * H * H / 8; o.Vz += q * H / 2; }
+      });
     });
+    // vent descendant / soulèvement de toiture repris en effort normal
+    out.W.N = A * num(P.Wd);
+    out.Wu.N = -A * num(P.Wu);        // traction
     return { unit: 'daN', cases: out, extra: { A, H } };
   }
 
@@ -109,7 +118,7 @@
   function psiOf(s, c) {
     if (c === 'Q1' || c === 'Q2') return (D.CATEGORIES[s.categories[c]] || D.CATEGORIES['Cat. A']).psi;
     if (c === 'S') return s.altitudeHigh ? D.PSI_SNOW.high : D.PSI_SNOW.low;
-    if (c === 'W') return D.PSI_WIND;
+    if (c === 'W' || c === 'Wu') return D.PSI_WIND;
     return [0, 0, 0];
   }
   function durationOf(s, c) {
@@ -129,7 +138,7 @@
     return res;
   }
   const fmtC = (x) => (Math.round(x * 1000) / 1000).toString().replace('.', ',');
-  const LBL = { PP: 'PP', G: 'G', Gf: 'Gfrag', Q1: 'Q1', Q2: 'Q2', S: 'S', W: 'W', EXp: 'EX+', EXm: 'EX−', EYp: 'EY+', EYm: 'EY−' };
+  const LBL = { PP: 'PP', G: 'G', Gf: 'Gfrag', Q1: 'Q1', Q2: 'Q2', S: 'S', W: 'W↓', Wu: 'W↑', EXp: 'EX+', EXm: 'EX−', EYp: 'EY+', EYm: 'EY−' };
 
   function comboLabel(f) {
     const parts = [];
@@ -145,7 +154,8 @@
     const active = VAR.filter(isActive);
     const seis = SEIS.filter(isActive);
     const catH = (c) => (c === 'Q1' || c === 'Q2') && s.categories[c] === 'Cat. H';
-    const forbidden = (set) => set.some(catH) && set.some((c) => c === 'S' || c === 'W');
+    const forbidden = (set) => (set.some(catH) && set.some((c) => c === 'S' || WIND.includes(c)))
+      || WIND.every((w) => set.includes(w));     // vent descendant et soulèvement jamais simultanés
     const list = [];
     const seen = new Set();
     const push = (sit, f) => {
@@ -160,13 +170,13 @@
 
     // ELU fondamental (6.10)
     const gammas = [1.35];
-    if (s.options.gFav !== false && active.includes('W')) gammas.push(1.0);
+    if (s.options.gFav !== false && active.some((c) => WIND.includes(c))) gammas.push(1.0);
     gammas.forEach((g) => {
       if (g === 1.35) push('ELU', base(g));
       active.forEach((lead) => {
         subsets(active.filter((c) => c !== lead)).forEach((acc) => {
           const all = [lead].concat(acc);
-          if (g === 1.0 && !all.includes('W')) return;
+          if (g === 1.0 && !all.some((c) => WIND.includes(c))) return;
           const f = base(g);
           f[lead] = 1.5;
           acc.forEach((c) => { const p = psiOf(s, c)[0]; if (p > 0) f[c] = 1.5 * p; });
@@ -216,6 +226,8 @@
     const E05 = mat.E005 * 1000, E0m = mat.E0mean * 1000;
 
     const lfy = num(s.lfy) * 1000, lfz = num(s.lfz) * 1000, lef = num(s.lef) * 1000;
+    // longueur de déversement quand le moment s'inverse (soulèvement : fibre inférieure comprimée)
+    const lefUp = (s.lefUp === undefined || s.lefUp === '' ? num(s.lef) : num(s.lefUp)) * 1000;
 
     // --- section à froid
     const sec = {
@@ -225,7 +237,8 @@
     const instC = {
       y: kcOf(lfy, h / Math.sqrt(12), mat.fc0k, E05, betac),
       z: kcOf(lfz, b / Math.sqrt(12), mat.fc0k, E05, betac),
-      lt: kcritOf(b, h, lef, E05, mat.fmk)
+      lt: kcritOf(b, h, lef, E05, mat.fmk),
+      ltUp: kcritOf(b, h, lefUp, E05, mat.fmk)
     };
 
     // --- section au feu (méthode de la section réduite, EN 1995-1-2 4.2.2)
@@ -244,7 +257,8 @@
     const instF = t > 0 && bf > 0 && hf > 0 ? {
       y: kcOf(lfy, hf / Math.sqrt(12), fire.fc20, fire.E20, betac),
       z: kcOf(lfz, bf / Math.sqrt(12), fire.fc20, fire.E20, betac),
-      lt: kcritOf(bf, hf, lef, fire.E20, fire.fm20)
+      lt: kcritOf(bf, hf, lef, fire.E20, fire.fm20),
+      ltUp: kcritOf(bf, hf, lefUp, fire.E20, fire.fm20)
     } : null;
 
     // --- sollicitations unitaires
@@ -258,6 +272,11 @@
         Vz: num(src.Vz) * uf.F, Vy: num(src.Vy) * uf.F
       };
     });
+
+    // --- sens « gravitaire » de My : celui des charges permanentes (sinon positif).
+    // Un moment de calcul de signe opposé = moment inversé (soulèvement) → l_ef,inv.
+    const myG = GPERM.reduce((a, c) => a + cases[c].My, 0);
+    const gSign = myG < 0 ? -1 : 1;
 
     // --- combinaisons
     const C = buildCombos(s, cases);
@@ -318,9 +337,13 @@
         R.b23 = sN / (inst.y.kc * fd.c) + m11;
         R.b24 = sN / (inst.z.kc * fd.c) + m12;
       }
-      const lt = smy / (inst.lt.kcrit * fd.my);
-      R.lt33 = lt + (s.options.devMz !== false ? smz / fd.mz : 0);
-      if (comp) R.lt35 = lt * lt + sN / (inst.z.kc * fd.c) + (s.options.devMz !== false ? smz / fd.mz : 0);
+      const reversed = eff.My * gSign < -1e-9;
+      const ltI = reversed ? inst.ltUp : inst.lt;
+      const lt = smy / (ltI.kcrit * fd.my);
+      const kz = s.options.devMz !== false ? smz / fd.mz : 0;
+      const k33 = reversed ? 'lt33u' : 'lt33', k35 = reversed ? 'lt35u' : 'lt35';
+      R[k33] = lt + kz;
+      if (comp) R[k35] = lt * lt + sN / (inst.z.kc * fd.c) + kz;
       let max = 0, gov = null;
       Object.keys(R).forEach((k) => { if (Number.isFinite(R[k]) && R[k] > max) { max = R[k]; gov = k; } });
       if (sit === 'FEU' && (fire.bf <= 0 || fire.hf <= 0)) { max = Infinity; gov = 'char'; }
@@ -328,6 +351,7 @@
       return {
         id: (sit === 'ELU' ? 'ELU ' : sit === 'FEU' ? 'FEU ' : 'SEI ') + String(id).padStart(2, '0'),
         sit, f, label: comboLabel(f), dur, kmod, gamma, kcr, eff, stress: { sN, smy, smz, tau, comp, tens },
+        reversed, kcrit: ltI.kcrit,
         fd, R, max, gov
       };
     });
@@ -361,23 +385,30 @@
       }
     });
     const varAct = VAR.filter((c) => uCase[c].y !== 0 || uCase[c].z !== 0);
+    // Enveloppe signée : pour chaque sens (+/−) et chaque action dominante, les actions
+    // d'accompagnement ne sont retenues que si elles aggravent la flèche dans ce sens ;
+    // W↓ et W↑ ne sont jamais cumulés. On garde la flèche de plus grande valeur absolue.
     function slsDir(dir) {
       const g = GPERM.reduce((a, c) => a + uCase[c][dir], 0);
       const gBefore = uCase.PP[dir] + uCase.G[dir];
-      let winst = 0, wq = 0, lead = null;
-      varAct.forEach((L1) => {
-        let wi = uCase[L1][dir];
-        let wf = uCase[L1][dir] * (1 + psiOf(s, L1)[2] * kdef);
-        varAct.forEach((c) => {
-          if (c === L1) return;
-          wi += psiOf(s, c)[0] * uCase[c][dir];
-          wf += (psiOf(s, c)[0] + psiOf(s, c)[2] * kdef) * uCase[c][dir];
+      const best = { winst: 0, wfin: g * (1 + kdef), wact: g * (1 + kdef) - gBefore, lead: null };
+      [1, -1].forEach((sg) => {
+        [null].concat(varAct).forEach((L1) => {
+          let wi = 0, wf = g * (1 + kdef);
+          const used = [];
+          if (L1) { wi = uCase[L1][dir]; wf += uCase[L1][dir] * (1 + psiOf(s, L1)[2] * kdef); used.push(L1); }
+          varAct.forEach((c) => {
+            if (c === L1 || (WIND.includes(c) && used.some((u) => WIND.includes(u)))) return;
+            const ci = psiOf(s, c)[0] * uCase[c][dir];
+            const cf = (psiOf(s, c)[0] + psiOf(s, c)[2] * kdef) * uCase[c][dir];
+            if (sg * cf > 0) { wi += ci; wf += cf; used.push(c); }
+          });
+          if (L1 && sg * wi > Math.abs(best.winst)) best.winst = wi;
+          if (sg * wf > Math.abs(best.wfin)) { best.wfin = wf; best.lead = L1; }
+          if (sg * (wf - gBefore) > Math.abs(best.wact)) best.wact = wf - gBefore;
         });
-        if (Math.abs(wi) > Math.abs(winst)) winst = wi;
-        if (Math.abs(wf) > Math.abs(wq)) { wq = wf; lead = L1; }
       });
-      const wfin = g * (1 + kdef) + wq;
-      return { winst, wfin, wact: wfin - gBefore, ginst: g, lead };
+      return { winst: best.winst, wfin: best.wfin, wact: best.wact, ginst: g, lead: best.lead };
     }
     const lim = Object.assign({ inst: 300, fin: 250, act: 500 }, sls.limits || {});
     const defl = { y: slsDir('y'), z: slsDir('z') };
@@ -392,7 +423,7 @@
     const slsMax = slsRows.reduce((a, r) => Math.max(a, r.ratio), 0);
 
     return {
-      mat, sec, ksys, gM, betac, kfi, kdef, sc, L, lfy, lfz, lef, instC, instF, fire,
+      mat, sec, ksys, gM, betac, kfi, kdef, sc, L, lfy, lfz, lef, lefUp, gSign, instC, instF, fire,
       unit: U, cases, uCase, combos, env, sls: { rows: slsRows, max: slsMax, defl, kdef, L: Lsls, mode: sls.mode },
       active: C.active, seis: C.seis, warnings,
       durationOf: (c) => durationOf(s, c), psiOf: (c) => psiOf(s, c)
@@ -413,6 +444,8 @@
     b24: { label: 'Flambement axe z + flexion', ref: '6.24', f: 'σc/(kc,z·fc) + km·σm,y/fm,y + σm,z/fm,z' },
     lt33: { label: 'Déversement', ref: '6.33', f: 'σm,y/(kcrit·fm,y) [+ σm,z/fm,z]' },
     lt35: { label: 'Déversement + flambement z', ref: '6.35', f: '(σm,y/(kcrit·fm,y))² + σc/(kc,z·fc) [+ σm,z/fm,z]' },
+    lt33u: { label: 'Déversement — moment inversé (soulèvement)', ref: '6.33', f: 'σm,y/(kcrit,inv·fm,y) [+ σm,z/fm,z]' },
+    lt35u: { label: 'Déversement inversé + flambement z', ref: '6.35', f: '(σm,y/(kcrit,inv·fm,y))² + σc/(kc,z·fc) [+ σm,z/fm,z]' },
     char: { label: 'Section entièrement carbonisée', ref: 'EN 1995-1-2', f: '—' }
   };
 

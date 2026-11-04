@@ -83,7 +83,7 @@
       rows += line('τ<sub>d</sub> = 1,5·V / (k<sub>cr</sub>·b·h)', `k<sub>cr</sub> = ${fmt(c.kcr, 2)} → ${fmt(st.tau, 2)} MPa`);
       rows += line('f<sub>v,d</sub> = k<sub>mod</sub>·f<sub>v,k</sub>/γ<sub>M</sub>', `${fmt(kf, 3)} × ${fmt(m.fvk, 1)} = ${fmt(fd.v, 2)} MPa`);
     }
-    if (inst) rows += line('Instabilités', `k<sub>c,y</sub> = ${fmt(inst.y.kc, 3)} ; k<sub>c,z</sub> = ${fmt(inst.z.kc, 3)} ; k<sub>crit</sub> = ${fmt(inst.lt.kcrit, 3)}`);
+    if (inst) rows += line('Instabilités', `k<sub>c,y</sub> = ${fmt(inst.y.kc, 3)} ; k<sub>c,z</sub> = ${fmt(inst.z.kc, 3)} ; k<sub>crit</sub> = ${fmt(c.kcrit, 3)}${c.reversed ? ' (moment inversé, l<sub>ef,inv</sub> = ' + fmt(R.lefUp / 1000, 2) + ' m)' : ''}`);
     const g = E.CRITERIA[c.gov];
     if (g) rows += line(`Critère dimensionnant — éq. ${g.ref}`, `${esc(g.f)} = <b>${fmt(c.max, 3)}</b> ${c.max <= 1 ? '≤ 1' : '&gt; 1'}`);
     return `<div class="rp-calc">${rows}</div>`;
@@ -116,7 +116,7 @@
           ${kv('f<sub>m,k</sub> / f<sub>v,k</sub>', `${fmtG(m.fmk, 1)} / ${fmtG(m.fvk, 1)} MPa`)}${kv('f<sub>c,0,k</sub> / f<sub>t,0,k</sub>', `${fmtG(m.fc0k, 1)} / ${fmtG(m.ft0k, 1)} MPa`)}${kv('E<sub>0,mean</sub> / E<sub>0,05</sub>', `${fmtG(m.E0mean * 1000, 0)} / ${fmtG(m.E005 * 1000, 0)} MPa`)}
           ${kv('ρ<sub>k</sub> / ρ<sub>mean</sub>', `${m.rhok} / ${m.rhomean} kg/m³`)}${kv('k<sub>h,y</sub> / k<sub>h,z</sub>', `${fmt(R.sec.khH, 3)} / ${fmt(R.sec.khB, 3)}`)}${kv('k<sub>sys</sub>', fmt(R.ksys, 2))}
           ${kv('A / I<sub>y</sub>', `${fmtG(R.sec.A / 100, 1)} cm² / ${fmtG(R.sec.Iy / 1e4, 0)} cm⁴`)}${kv('W<sub>y</sub> / W<sub>z</sub>', `${fmtG(R.sec.Wy / 1e3, 1)} / ${fmtG(R.sec.Wz / 1e3, 1)} cm³`)}${kv('I<sub>z</sub>', `${fmtG(R.sec.Iz / 1e4, 0)} cm⁴`)}
-          ${kv('l<sub>f,y</sub> / l<sub>f,z</sub>', `${fmt(R.lfy / 1000, 2)} / ${fmt(R.lfz / 1000, 2)} m`)}${kv('l<sub>ef</sub> déversement', `${fmt(R.lef / 1000, 2)} m`)}${kv('Stabilité au feu', R.fire.t > 0 ? `R${R.fire.t} (${s.fire.facesB} face(s) sur b, ${s.fire.facesH} sur h)` : 'non requise')}
+          ${kv('l<sub>f,y</sub> / l<sub>f,z</sub>', `${fmt(R.lfy / 1000, 2)} / ${fmt(R.lfz / 1000, 2)} m`)}${kv('l<sub>ef</sub> / l<sub>ef,inv</sub> (déversement)', `${fmt(R.lef / 1000, 2)} / ${fmt(R.lefUp / 1000, 2)} m`)}${kv('Stabilité au feu', R.fire.t > 0 ? `R${R.fire.t} (${s.fire.facesB} face(s) sur b, ${s.fire.facesH} sur h)` : 'non requise')}
         </div></div></div>
       ${H2('Actions et sollicitations caractéristiques')}
       <table><thead><tr><th>Cas</th><th>Description</th><th>Catégorie</th><th class="num">ψ<sub>0</sub></th><th class="num">ψ<sub>1</sub></th><th class="num">ψ<sub>2</sub></th><th>Durée (k<sub>mod</sub>)</th></tr></thead><tbody>${activeCases.map(psiRow).join('')}</tbody></table>
@@ -125,7 +125,7 @@
       </tbody></table>
       <p class="f" style="font-size:7.8pt;color:#555">${s.loads.mode === 'direct' ? 'Sollicitations issues du modèle de calcul (saisie directe par cas unitaire).' : s.loads.mode === 'poutre' ? `Sollicitations calculées : poutre bi-articulée sous charges réparties, bande ${fmtG(+s.loads.poutre.B, 2)} m${+s.loads.poutre.Bz ? ' (axe faible ' + fmtG(+s.loads.poutre.Bz, 2) + ' m)' : ''}${+s.loads.poutre.rampant ? ', rampant ' + s.loads.poutre.rampant + ' ' + s.loads.poutre.rampantUnit : ''}${+s.loads.poutre.devers ? ', dévers ' + s.loads.poutre.devers + ' ' + s.loads.poutre.deversUnit : ''}.` : `Sollicitations calculées par descente de charges : surface reprise ${fmtG(+s.loads.poteau.S, 2)} m².`} Convention : F<sub>x</sub> &gt; 0 en compression.</p>
       ${H2('Combinaisons d\'actions')}
-      <p>ELU fondamental (NF EN 1990 éq. 6.10) : 1,35·G + 1,5·Q<sub>k,1</sub> + Σ 1,5·ψ<sub>0,i</sub>·Q<sub>k,i</sub>${s.options.gFav !== false && R.active.includes('W') ? ', et 1,0·G + 1,5·W (G favorable)' : ''} — ${R.env.ELU ? R.env.ELU.n : 0} combinaisons.
+      <p>ELU fondamental (NF EN 1990 éq. 6.10) : 1,35·G + 1,5·Q<sub>k,1</sub> + Σ 1,5·ψ<sub>0,i</sub>·Q<sub>k,i</sub>${s.options.gFav !== false && R.active.some((c) => c === 'W' || c === 'Wu') ? ', et 1,0·G + 1,5·W (G favorable) ; W↓ et W↑ jamais simultanés' : ''} — ${R.env.ELU ? R.env.ELU.n : 0} combinaisons.
       ${R.env.FEU ? ` Incendie (6.11b) : G + ψ<sub>${s.options.fireLead === 'psi2' ? '2' : '1'},1</sub>·Q<sub>k,1</sub> + Σ ψ<sub>2,i</sub>·Q<sub>k,i</sub> — ${R.env.FEU.n} combinaisons.` : ''}
       ${R.env.SEI ? ` Sismique (6.12b) : G + Σ ψ<sub>2,i</sub>·Q<sub>k,i</sub> + A<sub>Ed</sub> — ${R.env.SEI.n} combinaisons (k<sub>mod</sub> = ${fmt(+s.options.seisKmod || 1.1, 2)}, γ<sub>M</sub> = ${fmt(s.options.seisGammaM === 'one' ? 1 : R.gM, 2)}).` : ''}
       k<sub>mod</sub> retenu : celui de l'action de plus courte durée de chaque combinaison.</p>
