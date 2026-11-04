@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lignum · tests</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; color: #111; background: #fff; }
+  table { border-collapse: collapse; } td, th { border-bottom: 1px solid #ddd; padding: 4px 10px; text-align: left; }
+  .ok { color: #1f7a4d; font-weight: 700; } .ko { color: #c62f29; font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>Lignum — tests de non-régression</h1>
+<p>Valeurs de référence relevées dans les classeurs Excel d'origine (situations non concernées par les corrections), et calculs manuels.</p>
+<div id="out"></div>
+<script src="js/data.js"></script>
+<script src="js/ec5.js"></script>
+<script src="js/store.js"></script>
+<script>
+(function () {
+  const E = LignumEC5, ST = LignumStore;
+  const rows = [];
+  let fails = 0;
+  function check(name, got, exp, tol = 1e-4) {
+    const ok = Math.abs(got - exp) <= tol * Math.max(1, Math.abs(exp));
+    if (!ok) fails++;
+    rows.push(`<tr><td>${name}</td><td>${got.toPrecision(7)}</td><td>${exp.toPrecision(7)}</td><td class="${ok ? 'ok' : 'ko'}">${ok ? 'OK' : 'ÉCART'}</td></tr>`);
+  }
+
+  // --- Cas 1 : classeur POTEAU (GL24h 200×200, L = 2 m, classe 1), saisie directe
+  const s1 = ST.defaultState();
+  Object.assign(s1, { elemType: 'poteau', b: 200, h: 200, L: 2, lfy: 2, lfz: 2, lef: 2, grade: 'GL24h', serviceClass: 1 });
+  s1.categories = { Q1: 'Cat. B', Q2: 'Cat. A' };
+  s1.loads.direct = ST.emptyTable();
+  Object.assign(s1.loads.direct.N, { PP: 33.6, G: 26597.520000000004, Gf: 4161.6000000000004, Q1: 1836.0000000000002, Q2: 1958.4000000000003, S: 440.6400000000001 });
+  const r1 = E.compute(s1);
+  check('Poteau · taux max ELU (Excel G31)', r1.env.ELU.max, 0.9342236565803318);
+  check('Poteau · compression seule ELU 01 (Excel AB43)', r1.env.ELU.byCrit.c.r, 0.90213046875000036);
+  check('Poteau · N ELU 01 [N] (Excel N43 × 10)', r1.combos[0].eff.N, 415701.72000000013);
+
+  // --- Cas 1b : même poteau, R30 sur 4 faces (calcul manuel)
+  const s1b = JSON.parse(JSON.stringify(s1));
+  s1b.fire = { t: 30, facesB: 2, facesH: 2 };
+  const r1b = E.compute(s1b);
+  const bf = 200 - 2 * (0.7 * 30 + 7);
+  const Nfi = (33.6 + 26597.52 + 4161.6 + 0.5 * 1958.4 + 0.3 * 1836) * 10; // Q2 dominante (ψ1 = 0,5) + ψ2·Q1
+  const lrel = 2000 / (bf / Math.sqrt(12)) / Math.PI * Math.sqrt(24 / 9600);
+  const k = 0.5 * (1 + 0.1 * (lrel - 0.3) + lrel * lrel), kc = 1 / (k + Math.sqrt(k * k - lrel * lrel));
+  check('Poteau R30 · section résiduelle [mm]', r1b.fire.bf, bf);
+  check('Poteau R30 · taux max feu (manuel)', r1b.env.FEU.max, Nfi / (bf * bf) / (kc * 1.15 * 24));
+
+  // --- Cas 2 : classeur POUTRE (C24 60×100, L = 5,7 m, classe 2), hypothèses de charges
+  const s2 = ST.defaultState();
+  Object.assign(s2, { elemType: 'poutre', b: 60, h: 100, L: 5.7, lfy: 5.7, lfz: 5.7, lef: 5.7, grade: 'C24', serviceClass: 2 });
+  s2.categories = { Q1: 'Cat. C', Q2: 'Cat. C' };
+  s2.loads.mode = 'poutre';
+  Object.assign(s2.loads.poutre, {
+    B: 2.5, Bz: 3, strong: { G: 214, Gf: 200, Q1: 150, Q2: 0, S: 0, W: 0 }, weak: { G: 0, Gf: 0, Q1: 0, Q2: 0, S: 0, W: 155 },
+    rampant: 0, rampantUnit: '%', devers: 0, deversUnit: '%', facadePas: 3, facadeQ: 90, facadeFragile: false
+  });
+  const r2 = E.compute(s2);
+  const U = r2.unit.cases;
+  check('Poutre · My PP (Excel D101)', U.PP.My, 10.234350000000001);
+  check('Poutre · My G (Excel E101)', U.G.My, 3269.3062500000001);
+  check('Poutre · My Gfragile (Excel F101)', U.Gf.My, 2030.6250000000002);
+  check('Poutre · My Q1 (Excel G101)', U.Q1.My, 1522.96875);
+  check('Poutre · Mz W (Excel J102)', U.W.Mz, 1888.48125);
+  check('Poutre · Vz G (Excel E103)', U.G.Vz, 2294.25);
+  check('Poutre · Vy W (Excel J104)', U.W.Vy, 1325.25);
+  check('Poutre · taux max ELU (Excel D109)', r2.env.ELU.max, 62.721205888634991);
+  check('Poutre · déversement ELU 1,35G+1,5Q1 (Excel AP147)', r2.combos.find((c) => c.label === '1,35·(PP+G+Gfrag) + 1,5·Q1').R.lt33, 62.031403101160556);
+  check('Poutre · kcrit (Excel INSTABILITES P10)', r2.instC.lt.kcrit, 0.95145892059595094);
+  check('Poutre · kc,z (Excel INSTABILITES F15)', r2.instC.z.kc, 3.1027271735852673E-2);
+  const sl = (k) => r2.sls.rows.find((r) => r.key === k).w;
+  check('Poutre · winst(Q),y [mm] (Excel D120)', sl('winsty'), 937.14497514204538);
+  check('Poutre · winst(Q),z [mm] (Excel D121)', sl('winstz'), 3227.9438032670455);
+  check('Poutre · wfin,y [mm] (Excel D122)', sl('wfiny'), 7268.586393119318);
+  check('Poutre · wfin − winst(PP+G),y [mm] (Excel D124)', sl('wacty'), 5250.5508989147729);
+
+  // --- Cas 3 : séisme pris en compte
+  const s3 = JSON.parse(JSON.stringify(s1));
+  s3.loads.direct.My.EXp = 500;
+  const r3 = E.compute(s3);
+  check('Séisme · nombre de combinaisons ELA', r3.env.SEI.n, 1);
+  check('Séisme · My de calcul [N·mm]', r3.env.SEI.worst.eff.My, 500 * 1e4);
+
+  document.getElementById('out').innerHTML = `<p class="${fails ? 'ko' : 'ok'}" id="summary">${fails ? fails + ' écart(s)' : 'Tous les tests passent'} (${rows.length} contrôles)</p>
+    <table><thead><tr><th>Contrôle</th><th>Lignum</th><th>Référence</th><th></th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+})();
+</script>
+</body>
+</html>
