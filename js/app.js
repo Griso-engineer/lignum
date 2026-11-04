@@ -193,21 +193,21 @@
       <div id="loadInputs" style="margin-top:16px">${renderLoadInputs()}</div>
       <div id="unitTable" style="margin-top:16px"></div>
 
-      <details class="fold">
-        <summary>Flèches : méthode et limites</summary>
-        <div class="fields wide" style="margin:6px 0 10px">
-          ${field('Flèches unitaires', sel('sls.mode', [['calc', 'Calculées : M·L²/(9,6·E·I) — bi-articulée, charge répartie'], ['input', 'Saisies par cas (mm, depuis le modèle)']], { rerender: true }))}
-          ${field('Portée de référence', inp('sls.Lref', { ph: 'L' }), 'm', 'Vide = L.')}
-          ${field('Contreflèche w<sub>c</sub>', inp('sls.wc'), 'mm', 'Plan de h, opposée aux charges permanentes.')}
-          ${field('Limites', sel('sls.preset', [['an-courant', 'AN tab. 7.2 — bâtiments courants'], ['an-agricole', 'AN tab. 7.2 — bâtiments agricoles'], ['an-console', 'AN tab. 7.2 — consoles'], ['custom', 'Personnalisées']], { rerender: true }))}
-          ${field('w<sub>inst</sub>(Q) ≤ L /', inp('sls.limits.inst'))}
-          ${field('w<sub>net,fin</sub> ≤ L /', inp('sls.limits.netfin'))}
-          ${field('w<sub>fin</sub> ≤ L /', inp('sls.limits.fin'))}
-          ${field('w<sub>fin</sub> − w<sub>inst</sub>(PP+G) ≤ L /', inp('sls.limits.act'), '', 'Flèche active, éléments fragiles (usage). Vide = non vérifié.')}
-        </div>
-        ${state.sls.mode === 'calc' ? `<div style="margin:0 0 10px">${chk('sls.shear', 'Ajouter la flèche due à l\'effort tranchant (1,2·M/(G<sub>mean</sub>·A) — sensible pour les poutres courtes et hautes)')}</div>` : ''}
-        <p class="note">Une limite vide désactive le critère correspondant. Pour une console, saisir comme portée de référence 2 × la longueur du porte-à-faux si les flèches sont saisies depuis le modèle.</p>
-      </details>
+      <div class="sub-title" style="margin-top:30px">Flèches — critères et méthode</div>
+      <div class="fields">
+        ${field('w<sub>inst</sub>(Q) ≤ L /', inp('sls.limits.inst'), '', 'Variables seules, comb. caractéristique.')}
+        ${field('w<sub>net,fin</sub> ≤ L /', inp('sls.limits.netfin'), '', 'w<sub>fin</sub> − contreflèche.')}
+        ${field('w<sub>fin</sub> ≤ L /', inp('sls.limits.fin'), '', 'Flèche finale totale.')}
+        ${field('Flèche active ≤ L /', inp('sls.limits.act'), '', 'w<sub>fin</sub> − w<sub>inst</sub>(PP+G), éléments fragiles.')}
+        ${field('Préréglage', sel('sls.preset', [['an-courant', 'AN 7.2 — bâtiments courants'], ['an-agricole', 'AN 7.2 — bâtiments agricoles'], ['an-console', 'AN 7.2 — consoles'], ['custom', 'Personnalisé (saisie libre)']]), '', 'Modifier une limite passe en « personnalisé ».')}
+      </div>
+      <div class="fields wide" style="margin-top:14px">
+        ${field('Flèches unitaires', sel('sls.mode', [['calc', 'Calculées : M·L²/(9,6·E·I) — bi-articulée, charge répartie'], ['input', 'Saisies par cas (mm, depuis le modèle)']], { rerender: true }))}
+        ${field('Portée de référence', inp('sls.Lref', { ph: 'L' }), 'm', 'Vide = L. Console : 2 × porte-à-faux.')}
+        ${field('Contreflèche w<sub>c</sub>', inp('sls.wc'), 'mm', 'Plan de h, opposée aux charges permanentes.')}
+      </div>
+      ${state.sls.mode === 'calc' ? `<div style="margin:10px 0 0">${chk('sls.shear', 'Ajouter la flèche due à l\'effort tranchant (1,2·M/(G<sub>mean</sub>·A) — sensible pour les poutres courtes et hautes)')}</div>` : ''}
+      <p class="note">Une limite laissée vide désactive le critère correspondant.</p>
 
       ${blockHead('04', 'Résultats', "Taux de travail maximaux par situation de projet ; le détail de chaque combinaison est en bas de page.")}
       <div id="results"></div>
@@ -299,7 +299,7 @@
     $('#unitTable').innerHTML = `<div class="tbl-wrap"><table class="grid"><thead>${head}</thead><tbody>${rows}${slsRows}</tbody></table></div>${tools}`;
   }
 
-  function refreshDynamic() {
+  function refreshDynamic(src) {
     recompute();
     const s = state;
     // figure
@@ -319,7 +319,10 @@
         ? `β<sub>n</sub> = ${fmt(f.betan, 2)} mm/min · d<sub>char,n</sub> = ${fmt(f.dchar, 1)} mm · k<sub>0</sub> = ${fmt(f.k0, 2)} · d<sub>ef</sub> = d<sub>char,n</sub> + k<sub>0</sub>·d<sub>0</sub> = ${fmt(f.def, 1)} mm<br>Section résiduelle : <b>${fmt(f.bf, 0)} × ${fmt(f.hf, 0)} mm</b> (tracé corail sur le schéma).`
         : 'Aucune durée requise : les combinaisons incendie ne sont pas évaluées.';
     }
-    if ($('#unitTable')) renderUnitTable();
+    // Ne jamais reconstruire le tableau après une saisie faite dedans : la cellule active ou
+    // celle vers laquelle on se déplace (Entrée, Tab, clic) serait remplacée et perdrait le focus.
+    const ut = $('#unitTable');
+    if (ut && !(src && ut.contains(src)) && !ut.contains(document.activeElement)) renderUnitTable();
     renderResults();
     const v = $('#verdict');
     if (v) {
@@ -403,7 +406,8 @@
       <p class="note">w<sub>inst</sub>(Q) : combinaison caractéristique (Q<sub>1</sub> + Σψ<sub>0,i</sub>Q<sub>i</sub>). w<sub>fin</sub> = w<sub>inst,G</sub>(1 + k<sub>def</sub>) + w<sub>inst,Q1</sub>(1 + ψ<sub>2,1</sub>k<sub>def</sub>) + Σ w<sub>inst,Qi</sub>(ψ<sub>0,i</sub> + ψ<sub>2,i</sub>k<sub>def</sub>) — NF EN 1995-1-1 § 2.3.2.2. w<sub>net,fin</sub> = w<sub>fin</sub> − w<sub>c</sub> (contreflèche ${fmt(R.sls.wc, 0)} mm). Limites de référence : NF EN 1995-1-1/NA tableau 7.2.${R.sls.shear ? " Flèche d'effort tranchant incluse." : ''}</p>`;
 
     // toutes les combinaisons
-    html += `<details class="fold"><summary>Toutes les combinaisons (${R.combos.length})</summary>
+    const wasOpen = !!(box.querySelector('details.fold') && box.querySelector('details.fold').open);
+    html += `<details class="fold"${wasOpen ? ' open' : ''}><summary>Toutes les combinaisons (${R.combos.length})</summary>
       <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>N°</th><th>Combinaison</th><th>Durée</th><th class="num">k<sub>mod</sub></th><th class="num">N [kN]</th><th class="num">M<sub>y</sub> [kN·m]</th><th class="num">M<sub>z</sub> [kN·m]</th><th class="num">V [kN]</th><th>Critère</th><th class="num">Taux</th></tr></thead><tbody>
       ${R.combos.map((c) => `<tr><td>${c.id}</td><td>${esc(c.label)}</td><td>${(D.DURATIONS.find((d) => d[0] === c.dur) || ['', ''])[1]}</td><td class="num">${fmt(c.kmod, 2)}</td><td class="num">${fmt(c.eff.N / 1e3, 2)}</td><td class="num">${fmt(c.eff.My / 1e6, 2)}</td><td class="num">${fmt(c.eff.Mz / 1e6, 2)}</td><td class="num">${fmt(Math.hypot(c.eff.Vz, c.eff.Vy) / 1e3, 2)}</td><td class="f">${c.gov && E.CRITERIA[c.gov] ? 'éq. ' + E.CRITERIA[c.gov].ref : '—'}</td><td class="num"><b>${pct(c.max)}</b></td></tr>`).join('')}
       </tbody></table></div></details>`;
@@ -644,7 +648,10 @@
     if (e.type === 'input' && (t.tagName === 'SELECT' || t.type === 'checkbox')) return;
     let v = t.type === 'checkbox' ? t.checked : t.value;
     if (t.dataset.p === 'altitudeHigh') v = v === 'true';
-    if (t.dataset.p === 'sls.preset' && SLS_PRESETS[v]) Object.assign(state.sls.limits, SLS_PRESETS[v]);
+    if (t.dataset.p === 'sls.preset' && SLS_PRESETS[v]) {
+      Object.assign(state.sls.limits, SLS_PRESETS[v]);
+      Object.keys(SLS_PRESETS[v]).forEach((k) => { const el = $(`[data-p="sls.limits.${k}"]`); if (el) el.value = SLS_PRESETS[v][k]; });
+    }
     if (t.dataset.p.startsWith('sls.limits.')) { state.sls.preset = 'custom'; const ps = $('[data-p="sls.preset"]'); if (ps) ps.value = 'custom'; }
     if (t.dataset.p === 'fire.t' || t.dataset.p === 'serviceClass' || t.dataset.p === 'ksys') v = +v;
     set(t.dataset.p, v);
@@ -658,8 +665,32 @@
     dirty = true;
     persistDraft();
     if (t.dataset.rerender && e.type === 'change') { renderVerification(app); return; }
-    refreshDynamic();
+    refreshDynamic(t);
   }
+
+  // à l'entrée dans une cellule du tableau, son contenu est sélectionné : on tape directement la nouvelle valeur
+  app.addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (t.dataset && t.dataset.r != null && t.select) setTimeout(() => { if (document.activeElement === t) t.select(); }, 0);
+  });
+
+  // navigation clavier dans le tableau : Entrée = ligne suivante, flèches haut/bas = ligne,
+  // flèches gauche/droite en bord de saisie = cellule voisine
+  app.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (!t.dataset || t.dataset.r == null) return;
+    const r = +t.dataset.r, c = +t.dataset.c;
+    let dr = 0, dc = 0;
+    if (e.key === 'Enter') dr = e.shiftKey ? -1 : 1;
+    else if (e.key === 'ArrowDown') dr = 1;
+    else if (e.key === 'ArrowUp') dr = -1;
+    else if (e.key === 'ArrowRight' && e.ctrlKey) dc = 1;
+    else if (e.key === 'ArrowLeft' && e.ctrlKey) dc = -1;
+    else return;
+    const next = $(`#unitTable input[data-r="${r + dr}"][data-c="${c + dc}"]`);
+    e.preventDefault();               // empêche aussi les flèches de modifier la valeur numérique
+    if (next) { next.focus(); next.select(); }
+  });
 
   // collage d'un bloc (Excel / GSA) dans le tableau des sollicitations
   app.addEventListener('paste', (e) => {
