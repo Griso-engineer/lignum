@@ -168,15 +168,15 @@
     };
     const base = (g) => ({ PP: g, G: g, Gf: g });
 
-    // ELU fondamental (6.10)
+    // ELU fondamental (6.10) — G défavorable (1,35) et G favorable (1,00) pour toute
+    // combinaison contenant une action variable : l'enveloppe retient le cas le plus sévère,
+    // quel que soit le signe relatif des effets (soulèvement, inversion d'effort normal…).
     const gammas = [1.35];
-    if (s.options.gFav !== false && active.some((c) => WIND.includes(c))) gammas.push(1.0);
+    if (s.options.gFav !== false && active.length) gammas.push(1.0);
     gammas.forEach((g) => {
       if (g === 1.35) push('ELU', base(g));
       active.forEach((lead) => {
         subsets(active.filter((c) => c !== lead)).forEach((acc) => {
-          const all = [lead].concat(acc);
-          if (g === 1.0 && !all.some((c) => WIND.includes(c))) return;
           const f = base(g);
           f[lead] = 1.5;
           acc.forEach((c) => { const p = psiOf(s, c)[0]; if (p > 0) f[c] = 1.5 * p; });
@@ -293,7 +293,9 @@
       used.forEach((c) => { const d = durationOf(s, c); if (D.DUR_RANK[d] > D.DUR_RANK[dur]) dur = d; });
       let kmod, gamma, S, inst, fv, khH, khB, khT, fk;
       if (sit === 'FEU') {
-        kmod = 1; gamma = 1; S = fire; inst = instF; khH = khB = khT = 1;
+        // section entièrement carbonisée (ou non définie) : coefficients neutres, le taux est forcé à ∞ plus bas
+        const one = { kc: 1, kcrit: 1 };
+        kmod = 1; gamma = 1; S = fire; inst = instF || { y: one, z: one, lt: one, ltUp: one }; khH = khB = khT = 1;
         fk = { fm: fire.fm20, ft: fire.ft20, fc: fire.fc20, fv: fire.fv20 };
       } else {
         kmod = sit === 'SEI' ? num(s.options.seisKmod, 1.1) : kmodTab[dur];
@@ -306,15 +308,18 @@
         t: fk.ft * khT * r, c: fk.fc * r, my: fk.fm * khH * ksys * r, mz: fk.fm * khB * ksys * r, v: fk.fv * r
       };
       // kcr (6.1.7 + AN française)
-      let kcr = 1;
+      // Rapport G/(G+ΣQ) sur les actions CARACTÉRISTIQUES présentes dans la combinaison
+      // (sans γ ni ψ), comme le demande l'AN — et non sur les efforts pondérés.
+      let kcr = 1, gRatio = null;
       if (s.options.kcrMode && s.options.kcrMode !== 'auto') kcr = num(s.options.kcrMode, 1);
       else {
         if (sc === '3') kcr = 0.67;
         else if (mat.type === 'massif' && Math.max(b, h) > 150) kcr = 0.67;
         else if (sc === '2' && mat.type === 'LC') {
-          const vg = Math.hypot(...['Vz', 'Vy'].map((e) => GPERM.reduce((a, c) => a + f[c] * cases[c][e] || a, 0)));
-          const vq = Math.hypot(...['Vz', 'Vy'].map((e) => VAR.concat(SEIS).reduce((a, c) => a + (f[c] || 0) * cases[c][e], 0)));
-          kcr = vg + vq > 0 && vg / (vg + vq) >= 0.7 ? 0.67 : 1;
+          const vg = Math.hypot(...['Vz', 'Vy'].map((e) => GPERM.reduce((a, c) => a + cases[c][e], 0)));
+          const vq = VAR.concat(SEIS).filter((c) => f[c]).reduce((a, c) => a + Math.hypot(cases[c].Vz, cases[c].Vy), 0);
+          gRatio = vg + vq > 0 ? vg / (vg + vq) : 1;
+          kcr = gRatio >= 0.7 ? 0.67 : 1;
         }
       }
       const A = S.A || 1e-9;
@@ -350,7 +355,7 @@
       const id = sit === 'ELU' ? ++iE : sit === 'FEU' ? ++iF : ++iS;
       return {
         id: (sit === 'ELU' ? 'ELU ' : sit === 'FEU' ? 'FEU ' : 'SEI ') + String(id).padStart(2, '0'),
-        sit, f, label: comboLabel(f), dur, kmod, gamma, kcr, eff, stress: { sN, smy, smz, tau, comp, tens },
+        sit, f, label: comboLabel(f), dur, kmod, gamma, kcr, gRatio, eff, stress: { sN, smy, smz, tau, comp, tens },
         reversed, kcrit: ltI.kcrit,
         fd, R, max, gov
       };
@@ -378,12 +383,17 @@
       if (sls.mode === 'input') {
         uCase[c.id] = { y: num(sls.uy && sls.uy[c.id]), z: num(sls.uz && sls.uz[c.id]) };
       } else {
+        // flexion : M·L²/(9,6·E·I) ; effort tranchant (Timoshenko, section rectangulaire,
+        // charge répartie) : M/(G·A·5/6) = 1,2·M/(G·A)
+        const Gm = mat.Gmean * 1000;
+        const sh = sls.shear !== false ? 1.2 / (Gm * sec.A) : 0;
         uCase[c.id] = {
-          y: cases[c.id].My * Lsls * Lsls / (9.6 * E0m * sec.Iy),
-          z: cases[c.id].Mz * Lsls * Lsls / (9.6 * E0m * sec.Iz)
+          y: cases[c.id].My * Lsls * Lsls / (9.6 * E0m * sec.Iy) + cases[c.id].My * sh,
+          z: cases[c.id].Mz * Lsls * Lsls / (9.6 * E0m * sec.Iz) + cases[c.id].Mz * sh
         };
       }
     });
+    const wc = num(sls.wc);   // contreflèche [mm], dans le plan de h, opposée aux charges permanentes
     const varAct = VAR.filter((c) => uCase[c].y !== 0 || uCase[c].z !== 0);
     // Enveloppe signée : pour chaque sens (+/−) et chaque action dominante, les actions
     // d'accompagnement ne sont retenues que si elles aggravent la flèche dans ce sens ;
@@ -391,7 +401,8 @@
     function slsDir(dir) {
       const g = GPERM.reduce((a, c) => a + uCase[c][dir], 0);
       const gBefore = uCase.PP[dir] + uCase.G[dir];
-      const best = { winst: 0, wfin: g * (1 + kdef), wact: g * (1 + kdef) - gBefore, lead: null };
+      const cw = dir === 'y' ? wc * (g < 0 ? -1 : 1) : 0;    // contreflèche signée
+      const best = { winst: 0, wfin: g * (1 + kdef), wnet: g * (1 + kdef) - cw, wact: g * (1 + kdef) - gBefore, lead: null };
       [1, -1].forEach((sg) => {
         [null].concat(varAct).forEach((L1) => {
           let wi = 0, wf = g * (1 + kdef);
@@ -406,14 +417,16 @@
           if (L1 && sg * wi > Math.abs(best.winst)) best.winst = wi;
           if (sg * wf > Math.abs(best.wfin)) { best.wfin = wf; best.lead = L1; }
           if (sg * (wf - gBefore) > Math.abs(best.wact)) best.wact = wf - gBefore;
+          if (sg * (wf - cw) > Math.abs(best.wnet)) best.wnet = wf - cw;
         });
       });
-      return { winst: best.winst, wfin: best.wfin, wact: best.wact, ginst: g, lead: best.lead };
+      return { winst: best.winst, wfin: best.wfin, wnet: best.wnet, wact: best.wact, ginst: g, lead: best.lead };
     }
-    const lim = Object.assign({ inst: 300, fin: 250, act: 500 }, sls.limits || {});
+    const lim = Object.assign({ inst: 300, netfin: 200, fin: 125, act: 500 }, sls.limits || {});
     const defl = { y: slsDir('y'), z: slsDir('z') };
     const slsRows = [];
-    [['winst', 'inst', 'w_inst(Q)'], ['wfin', 'fin', 'w_fin'], ['wact', 'act', 'w_fin − w_inst(PP+G)']].forEach(([k, l, lbl]) => {
+    [['winst', 'inst', 'w_inst(Q)'], ['wnet', 'netfin', 'w_net,fin = w_fin − w_c'], ['wfin', 'fin', 'w_fin'], ['wact', 'act', 'w_fin − w_inst(PP+G) (fragiles)']].forEach(([k, l, lbl]) => {
+      if (!(num(lim[l]) > 0)) return;            // limite vide = critère non vérifié
       ['y', 'z'].forEach((dir) => {
         const w = Math.abs(defl[dir][k]);
         const wl = Lsls / num(lim[l], 1);
@@ -422,9 +435,23 @@
     });
     const slsMax = slsRows.reduce((a, r) => Math.max(a, r.ratio), 0);
 
+    // --- contrôles de saisie : pas de verdict sur des données incomplètes
+    const invalid = [];
+    if (!(b > 0)) invalid.push('largeur b');
+    if (!(h > 0)) invalid.push('hauteur h');
+    if (!(L > 0)) invalid.push('longueur L');
+    if (invalid.length) warnings.push('Données manquantes ou nulles : ' + invalid.join(', ') + '. Aucun verdict n\'est donné.');
+    const anyEffect = D.CASES.some((c) => EFF.some((e) => Math.abs(cases[c.id][e]) > 1e-9));
+    if (!anyEffect) warnings.push('Aucune sollicitation saisie : le résultat ne vérifie rien.');
+    if (s.loads.mode === 'direct' && anyEffect && !EFF.some((e) => Math.abs(cases.PP[e]) > 1e-9)) {
+      warnings.push('Poids propre (colonne PP) vide : vérifiez qu\'il est inclus dans G ou ajoutez-le avec le bouton « Ajouter le PP calculé ».');
+    }
+    const valid = !invalid.length && anyEffect;
+
     return {
       mat, sec, ksys, gM, betac, kfi, kdef, sc, L, lfy, lfz, lef, lefUp, gSign, instC, instF, fire,
-      unit: U, cases, uCase, combos, env, sls: { rows: slsRows, max: slsMax, defl, kdef, L: Lsls, mode: sls.mode },
+      valid, unit: U, cases, uCase, combos, env,
+      sls: { rows: slsRows, max: slsMax, defl, kdef, L: Lsls, mode: sls.mode, shear: sls.mode !== 'input' && sls.shear !== false, wc },
       active: C.active, seis: C.seis, warnings,
       durationOf: (c) => durationOf(s, c), psiOf: (c) => psiOf(s, c)
     };

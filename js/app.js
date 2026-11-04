@@ -8,6 +8,12 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  // NF EN 1995-1-1/NA tableau 7.2 (w_inst(Q), w_net,fin, w_fin) + flèche active L/500 (usage, éléments fragiles)
+  const SLS_PRESETS = {
+    'an-courant': { inst: 300, netfin: 200, fin: 125, act: 500 },
+    'an-agricole': { inst: 200, netfin: 150, fin: 100, act: '' },
+    'an-console': { inst: 150, netfin: 100, fin: 62.5, act: 250 }
+  };
   let db = ST.load();
   let state = db.draft ? ST.upgrade(db.draft) : ST.defaultState();
   let R = null;
@@ -177,7 +183,7 @@
           ${field('k<sub>cr</sub> (cisaillement)', sel('options.kcrMode', [['auto', 'Auto (AN française)'], ['1', '1,00'], ['0.67', '0,67']]))}
         </div>
         <div style="display:flex;gap:18px;flex-wrap:wrap;margin:12px 0 6px">
-          ${chk('options.gFav', 'Combinaisons avec G favorable (1,0·G + 1,5·W)')}
+          ${chk('options.gFav', 'Combinaisons avec G favorable (1,0·G + actions variables)')}
           ${chk('options.devMz', 'Ajouter σ<sub>m,z</sub>/f<sub>m,z,d</sub> aux critères de déversement (flexion déviée)')}
         </div>
       </details>
@@ -192,10 +198,15 @@
         <div class="fields wide" style="margin:6px 0 10px">
           ${field('Flèches unitaires', sel('sls.mode', [['calc', 'Calculées : M·L²/(9,6·E·I) — bi-articulée, charge répartie'], ['input', 'Saisies par cas (mm, depuis le modèle)']], { rerender: true }))}
           ${field('Portée de référence', inp('sls.Lref', { ph: 'L' }), 'm', 'Vide = L.')}
+          ${field('Contreflèche w<sub>c</sub>', inp('sls.wc'), 'mm', 'Plan de h, opposée aux charges permanentes.')}
+          ${field('Limites', sel('sls.preset', [['an-courant', 'AN tab. 7.2 — bâtiments courants'], ['an-agricole', 'AN tab. 7.2 — bâtiments agricoles'], ['an-console', 'AN tab. 7.2 — consoles'], ['custom', 'Personnalisées']], { rerender: true }))}
           ${field('w<sub>inst</sub>(Q) ≤ L /', inp('sls.limits.inst'))}
+          ${field('w<sub>net,fin</sub> ≤ L /', inp('sls.limits.netfin'))}
           ${field('w<sub>fin</sub> ≤ L /', inp('sls.limits.fin'))}
-          ${field('w<sub>fin</sub> − w<sub>inst</sub>(PP+G) ≤ L /', inp('sls.limits.act'), '', 'Flèche active, éléments fragiles.')}
+          ${field('w<sub>fin</sub> − w<sub>inst</sub>(PP+G) ≤ L /', inp('sls.limits.act'), '', 'Flèche active, éléments fragiles (usage). Vide = non vérifié.')}
         </div>
+        ${state.sls.mode === 'calc' ? `<div style="margin:0 0 10px">${chk('sls.shear', 'Ajouter la flèche due à l\'effort tranchant (1,2·M/(G<sub>mean</sub>·A) — sensible pour les poutres courtes et hautes)')}</div>` : ''}
+        <p class="note">Une limite vide désactive le critère correspondant. Pour une console, saisir comme portée de référence 2 × la longueur du porte-à-faux si les flèches sont saisies depuis le modèle.</p>
       </details>
 
       ${blockHead('04', 'Résultats', "Taux de travail maximaux par situation de projet ; le détail de chaque combinaison est en bas de page.")}
@@ -313,7 +324,8 @@
     const v = $('#verdict');
     if (v) {
       const m = overallMax();
-      v.innerHTML = `<span class="verdict ${m <= 1 ? 'ok' : 'ko'}">${pct(m)} <small>${m <= 1 ? 'vérifié' : 'non vérifié'}</small></span>`;
+      v.innerHTML = !R.valid ? '<span class="verdict ko">— <small>données incomplètes</small></span>'
+        : `<span class="verdict ${m <= 1 ? 'ok' : 'ko'}">${pct(m)} <small>${m <= 1 ? 'vérifié*' : 'non vérifié'}</small></span>`;
     }
     const df = $('#dirtyFlag'); if (df) df.textContent = dirty ? 'modifié · non enregistré' : '';
     const cn = $('#crumbName'); if (cn) cn.textContent = state.name || 'Sans nom';
@@ -339,7 +351,7 @@
     return `<div class="tbl-wrap"><table class="tbl compact">
       <tr><th>Combinaison dimensionnante</th><th colspan="3">${esc(c.id)} — ${esc(c.label)}</th></tr>
       <tr><td>Efforts de calcul</td><td colspan="3">N = ${fmtG(c.eff.N / 1e3, 2)} kN · M<sub>y</sub> = ${fmtG(c.eff.My / 1e6, 2)} kN·m · M<sub>z</sub> = ${fmtG(c.eff.Mz / 1e6, 2)} kN·m · V<sub>z</sub> = ${fmtG(c.eff.Vz / 1e3, 2)} kN · V<sub>y</sub> = ${fmtG(c.eff.Vy / 1e3, 2)} kN</td></tr>
-      <tr><td>Coefficients</td><td colspan="3">k<sub>mod</sub> = ${fmt(c.kmod, 2)} (${(D.DURATIONS.find((d) => d[0] === c.dur) || ['', ''])[1].toLowerCase()}) · γ<sub>M</sub> = ${fmt(c.gamma, 2)} · k<sub>cr</sub> = ${fmt(c.kcr, 2)} · k<sub>c,y</sub> = ${fmt(inst ? inst.y.kc : 1, 3)} · k<sub>c,z</sub> = ${fmt(inst ? inst.z.kc : 1, 3)} · k<sub>crit</sub> = ${fmt(c.kcrit, 3)}${c.reversed ? ' <b>(moment inversé, l<sub>ef,inv</sub>)</b>' : ''}</td></tr>
+      <tr><td>Coefficients</td><td colspan="3">k<sub>mod</sub> = ${fmt(c.kmod, 2)} (${(D.DURATIONS.find((d) => d[0] === c.dur) || ['', ''])[1].toLowerCase()}) · γ<sub>M</sub> = ${fmt(c.gamma, 2)} · k<sub>cr</sub> = ${fmt(c.kcr, 2)}${c.gRatio != null ? ' (G/(G+ΣQ) caract. = ' + Math.round(c.gRatio * 100) + ' %)' : ''} · k<sub>c,y</sub> = ${fmt(inst ? inst.y.kc : 1, 3)} · k<sub>c,z</sub> = ${fmt(inst ? inst.z.kc : 1, 3)} · k<sub>crit</sub> = ${fmt(c.kcrit, 3)}${c.reversed ? ' <b>(moment inversé, l<sub>ef,inv</sub>)</b>' : ''}</td></tr>
       <tr><th>Contrainte</th><th class="num">σ [MPa]</th><th>Résistance</th><th class="num">f<sub>d</sub> [MPa]</th></tr>
       ${st.comp || st.tens ? `<tr><td>${st.comp ? 'σ<sub>c,0,d</sub>' : 'σ<sub>t,0,d</sub>'} = N / A${fireSec ? '<sub>fi</sub>' : ''}</td><td class="num">${F(st.sN)}</td><td>${st.comp ? 'f<sub>c,0,d</sub>' : 'f<sub>t,0,d</sub>'}</td><td class="num">${F(st.comp ? fd.c : fd.t)}</td></tr>` : ''}
       <tr><td>σ<sub>m,y,d</sub> = M<sub>y</sub> / W<sub>y</sub></td><td class="num">${F(st.smy)}</td><td>f<sub>m,y,d</sub></td><td class="num">${F(fd.my)}</td></tr>
@@ -364,12 +376,14 @@
     const warn = R.warnings.map((w) => `<p class="note warn">${esc(w)}</p>`).join('');
 
     let html = `${warn}<div class="kpis">
-      <div class="kpi ${m <= 1 ? 'hero' : 'bad'}"><b>Taux maximal</b><span>${pct(m)}</span><small>${m <= 1 ? 'Élément vérifié' : 'Élément non vérifié'}</small></div>
+      ${R.valid ? `<div class="kpi ${m <= 1 ? 'hero' : 'bad'}"><b>Taux maximal</b><span>${pct(m)}</span><small>${m <= 1 ? 'Vérifié pour les critères traités*' : 'Élément non vérifié'}</small></div>`
+        : '<div class="kpi bad"><b>Taux maximal</b><span>—</span><small>Données incomplètes</small></div>'}
       ${k('ELU fondamental', 'ELU', '')}
       ${k('ELU incendie', 'FEU', R.fire.t > 0 ? '' : 'pas de durée requise')}
       ${k('ELA séisme', 'SEI', 'aucune action sismique saisie')}
       ${slsK}
-    </div>`;
+    </div>
+    <p class="note">* Vérifié pour les critères traités par Lignum uniquement (résistance, instabilités, feu, séisme, flèches). Hors champ : compression transversale aux appuis, entailles, assemblages, vibrations… — voir l'onglet Méthode.</p>`;
 
     [['ELU', 'ELU fondamental — enveloppe par critère', false], ['FEU', `ELU incendie R${R.fire.t} — section résiduelle`, true], ['SEI', 'ELA séisme — enveloppe par critère', false]].forEach(([sit, title, fs]) => {
       const e = env[sit]; if (!e) return;
@@ -386,7 +400,7 @@
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Flèche</th><th>Direction</th><th class="num">w [mm]</th><th class="num">Limite [mm]</th><th class="num">soit</th><th class="num">Taux</th><th></th><th></th></tr></thead><tbody>
       ${R.sls.rows.map((r) => `<tr><td>${r.label}</td><td>${r.dir === 'y' ? 'plan de h (u<sub>y</sub>)' : 'plan de b (u<sub>z</sub>)'}</td><td class="num">${fmt(r.w, 1)}</td><td class="num">L/${r.limRatio} = ${fmt(r.lim, 1)}</td><td class="num">${r.w > 0 ? 'L/' + Math.round(r.Lratio) : '—'}</td><td class="num"><span class="ratio">${pct(r.ratio)}</span></td><td style="width:120px">${bar(r.ratio)}</td><td>${pill(r.ratio)}</td></tr>`).join('')}
       </tbody></table></div>
-      <p class="note">w<sub>inst</sub>(Q) : combinaison caractéristique (Q<sub>1</sub> + Σψ<sub>0,i</sub>Q<sub>i</sub>). w<sub>fin</sub> = w<sub>inst,G</sub>(1 + k<sub>def</sub>) + w<sub>inst,Q1</sub>(1 + ψ<sub>2,1</sub>k<sub>def</sub>) + Σ w<sub>inst,Qi</sub>(ψ<sub>0,i</sub> + ψ<sub>2,i</sub>k<sub>def</sub>) — NF EN 1995-1-1 § 2.3.2.2.</p>`;
+      <p class="note">w<sub>inst</sub>(Q) : combinaison caractéristique (Q<sub>1</sub> + Σψ<sub>0,i</sub>Q<sub>i</sub>). w<sub>fin</sub> = w<sub>inst,G</sub>(1 + k<sub>def</sub>) + w<sub>inst,Q1</sub>(1 + ψ<sub>2,1</sub>k<sub>def</sub>) + Σ w<sub>inst,Qi</sub>(ψ<sub>0,i</sub> + ψ<sub>2,i</sub>k<sub>def</sub>) — NF EN 1995-1-1 § 2.3.2.2. w<sub>net,fin</sub> = w<sub>fin</sub> − w<sub>c</sub> (contreflèche ${fmt(R.sls.wc, 0)} mm). Limites de référence : NF EN 1995-1-1/NA tableau 7.2.${R.sls.shear ? " Flèche d'effort tranchant incluse." : ''}</p>`;
 
     // toutes les combinaisons
     html += `<details class="fold"><summary>Toutes les combinaisons (${R.combos.length})</summary>
@@ -480,12 +494,12 @@
       <div class="cols2">
         <div>
           <div class="sub-title">Combinaisons générées</div>
-          <p><b>ELU fondamental (6.10)</b> : 1,35·G seul, puis pour chaque action variable dominante et chaque sous-ensemble d'actions d'accompagnement : 1,35·G + 1,5·Q<sub>1</sub> + Σ 1,5·ψ<sub>0,i</sub>·Q<sub>i</sub>. Variantes 1,0·G pour les combinaisons contenant le vent (soulèvement). Seules les actions non nulles sont combinées. Pas de concomitance entre une charge de toiture (cat. H) et la neige ou le vent.</p>
+          <p><b>ELU fondamental (6.10)</b> : 1,35·G seul, puis pour chaque action variable dominante et chaque sous-ensemble d'actions d'accompagnement : 1,35·G + 1,5·Q<sub>1</sub> + Σ 1,5·ψ<sub>0,i</sub>·Q<sub>i</sub>. Chaque combinaison est aussi générée avec 1,0·G (G favorable), quel que soit l'action variable : soulèvement, inversion de l'effort normal, etc. Toutes les charges permanentes (PP, G, G fragile) reçoivent le même γ<sub>G</sub> (même origine). Seules les actions non nulles sont combinées. Pas de concomitance entre une charge de toiture (cat. H) et la neige ou le vent.</p>
           <p><b>Incendie (6.11b)</b> : G + ψ<sub>1,1</sub>·Q<sub>1</sub> (ou ψ<sub>2,1</sub>) + Σ ψ<sub>2,i</sub>·Q<sub>i</sub>, sans coefficient partiel ; k<sub>mod,fi</sub> = γ<sub>M,fi</sub> = 1 ; section résiduelle ; cisaillement non vérifié (sections rectangulaires).</p>
           <p><b>Séisme (6.12b)</b> : G + Σ ψ<sub>2,i</sub>·Q<sub>i</sub> + A<sub>Ed</sub> pour chacun des cas EX+, EX−, EY+, EY− saisis.</p>
           <p><b>k<sub>mod</sub></b> : celui de l'action de plus courte durée présente dans la combinaison.</p>
           <div class="sub-title">Critères</div>
-          <p>6.1, 6.2, 6.11/6.12, 6.13 (k<sub>cr</sub> selon l'AN : 0,67 en classe 3, en massif de section &gt; 150 mm, en lamellé-collé classe 2 sous ≥ 70 % de charges permanentes ; 1 sinon), 6.17/6.18, 6.19/6.20, 6.23/6.24, 6.33, 6.35. Les critères de déversement reçoivent, en option, le terme σ<sub>m,z,d</sub>/f<sub>m,z,d</sub> (flexion déviée, ex. dévers).</p>
+          <p>6.1, 6.2, 6.11/6.12, 6.13 (k<sub>cr</sub> selon l'AN : 0,67 en classe 3, en massif de section &gt; 150 mm, en lamellé-collé classe 2 si G<sub>k</sub>/(G<sub>k</sub>+ΣQ<sub>k,i</sub>) ≥ 70 %, rapport calculé sur les efforts tranchants caractéristiques des actions de la combinaison ; 1 sinon), 6.17/6.18, 6.19/6.20, 6.23/6.24, 6.33, 6.35. Les critères de déversement reçoivent, en option, le terme σ<sub>m,z,d</sub>/f<sub>m,z,d</sub> (flexion déviée, ex. dévers).</p>
         </div>
         <div>
           <div class="sub-title">Corrections par rapport aux classeurs d'origine</div>
@@ -501,6 +515,8 @@
             <li><b>k<sub>h</sub></b> : sur b pour M<sub>z</sub>, sur max(b,h) en traction, k<sub>h</sub> = 1 pour ρ<sub>k</sub> &gt; 700 ; pas de k<sub>h</sub> au feu.</li>
           </ol>
           <p class="note">Hypothèses conservées : poutre bi-articulée sous charge répartie pour les flèches calculées et pour les hypothèses de charges ; σ<sub>m,crit</sub> par l'éq. 6.32 ; cisaillement sur la résultante √(V<sub>y</sub>² + V<sub>z</sub>²).</p>
+          <div class="sub-title">Non couvert par Lignum</div>
+          <p style="font-size:14px">« Vérifié » signifie vérifié pour les critères listés ci-dessus seulement. Restent à justifier à part : compression perpendiculaire au fil aux appuis (6.1.5), entailles (6.5), assemblages, torsion, vibrations des planchers (7.3), sections non rectangulaires ou variables, maintiens latéraux et point d'application des charges pour le déversement (l<sub>ef</sub> à justifier, éq. 6.32 pour sections rectangulaires), schémas statiques autres que bi-articulés pour les flèches calculées.</p>
         </div>
       </div>
     </div>`;
@@ -513,7 +529,7 @@
     try {
       const r = E.compute(st);
       const g = (k) => (r.env[k] ? r.env[k].max : null);
-      return { elu: g('ELU'), feu: g('FEU'), sei: g('SEI'), els: r.sls.max, max: Math.max(g('ELU') || 0, g('FEU') || 0, g('SEI') || 0, r.sls.max), sec: `${st.grade} ${st.b}×${st.h}`, L: st.L };
+      return { elu: g('ELU'), feu: g('FEU'), sei: g('SEI'), els: r.sls.max, max: r.valid ? Math.max(g('ELU') || 0, g('FEU') || 0, g('SEI') || 0, r.sls.max) : null, sec: `${st.grade} ${st.b}×${st.h}`, L: st.L };
     } catch (e) { return null; }
   }
 
@@ -628,6 +644,8 @@
     if (e.type === 'input' && (t.tagName === 'SELECT' || t.type === 'checkbox')) return;
     let v = t.type === 'checkbox' ? t.checked : t.value;
     if (t.dataset.p === 'altitudeHigh') v = v === 'true';
+    if (t.dataset.p === 'sls.preset' && SLS_PRESETS[v]) Object.assign(state.sls.limits, SLS_PRESETS[v]);
+    if (t.dataset.p.startsWith('sls.limits.')) { state.sls.preset = 'custom'; const ps = $('[data-p="sls.preset"]'); if (ps) ps.value = 'custom'; }
     if (t.dataset.p === 'fire.t' || t.dataset.p === 'serviceClass' || t.dataset.p === 'ksys') v = +v;
     set(t.dataset.p, v);
     // longueurs liées à L

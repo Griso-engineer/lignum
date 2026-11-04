@@ -59,6 +59,7 @@
     B: 2.5, Bz: 3, strong: { G: 214, Gf: 200, Q1: 150, Q2: 0, S: 0, W: 0 }, weak: { G: 0, Gf: 0, Q1: 0, Q2: 0, S: 0, W: 155 },
     rampant: 0, rampantUnit: '%', devers: 0, deversUnit: '%', facadePas: 3, facadeQ: 90, facadeFragile: false
   });
+  s2.sls.shear = false;            // l'Excel ne compte que la flexion
   const r2 = E.compute(s2);
   const U = r2.unit.cases;
   check('Poutre · My PP (Excel D101)', U.PP.My, 10.234350000000001);
@@ -92,6 +93,7 @@
   s4.loads.direct = ST.emptyTable();
   Object.assign(s4.loads.direct.My, { G: 300, W: 200, Wu: -900 });
   Object.assign(s4.loads.direct.Vz, { G: 200, W: 133, Wu: -600 });
+  s4.sls.shear = false;
   const r4 = E.compute(s4);
   const both = r4.combos.some((c) => c.f.W && c.f.Wu);
   check('Soulèvement · aucune combinaison W↓ + W↑', both ? 1 : 0, 0);
@@ -108,6 +110,45 @@
   check('Soulèvement · wfin,y = max(|G(1+kdef)+W↓|, |G(1+kdef)+W↑|)', wfin4, Math.max(Math.abs(300 * 1.8 + 200), Math.abs(300 * 1.8 - 900)) * ku);
   const winst4 = r4.sls.rows.find((r) => r.key === 'winsty').w;
   check('Soulèvement · winst(Q),y = |W↑| (pas de cumul avec W↓)', winst4, 900 * ku);
+
+  // --- Cas 5 (audit) : kcr sur rapport CARACTÉRISTIQUE — GL24h 120×240, classe 2, VG = 15,84 kN, VQ = 6,16 kN
+  const s5 = ST.defaultState();
+  Object.assign(s5, { b: 120, h: 240, L: 4, lfy: 4, lfz: 4, lef: 0, lefUp: 0, grade: 'GL24h', serviceClass: 2 });
+  s5.link = { lfy: true, lfz: true, lef: false, lefUp: false };
+  s5.loads.unit = 'kN';
+  s5.loads.direct = ST.emptyTable();
+  Object.assign(s5.loads.direct.Vz, { G: 15.84, Q1: 6.16 });
+  const r5 = E.compute(s5);
+  const v5 = r5.env.ELU.byCrit.v;
+  check('Audit kcr · kcr retenu (G/(G+Q) = 72 % → 0,67)', v5.combo.kcr, 0.67);
+  check('Audit kcr · taux cisaillement 1,35G+1,5Q (106,3 %)', v5.r, 1.5 * (1.35 * 15840 + 1.5 * 6160) / (0.67 * 120 * 240) / (3.5 * 0.8 / 1.25));
+
+  // --- Cas 6 (audit) : G favorable hors vent — C24 100×100, NG = +40 kN, NQ = −92 kN
+  const s6 = ST.defaultState();
+  Object.assign(s6, { b: 100, h: 100, L: 0.5, lfy: 0.5, lfz: 0.5, lef: 0.5, lefUp: 0.5, grade: 'C24', serviceClass: 1 });
+  s6.loads.unit = 'kN';
+  s6.loads.direct = ST.emptyTable();
+  Object.assign(s6.loads.direct.N, { G: 40, Q1: -92 });
+  const r6 = E.compute(s6);
+  check('Audit γG · traction 1,0G + 1,5Q (101,3 %)', r6.env.ELU.byCrit.t.r, 98000 / 10000 / (14.5 * Math.pow(1.5, 0.2) * 0.8 / 1.3));
+  check('Audit γG · combinaison dimensionnante à 1,0·G', r6.env.ELU.byCrit.t.combo.f.G, 1);
+
+  // --- Cas 7 (audit) : flèche d'effort tranchant — C24 100×300, L = 2 m, q = 5 kN/m
+  const s7 = ST.defaultState();
+  Object.assign(s7, { b: 100, h: 300, L: 2, grade: 'C24' });
+  s7.loads.unit = 'kN';
+  s7.loads.direct = ST.emptyTable();
+  s7.loads.direct.My.G = 5 * 2 * 2 / 8;
+  const r7 = E.compute(s7);
+  check('Flèche · flexion + effort tranchant (0,421 + 0,145 mm)', r7.uCase.G.y, 5 * 5 * 2000 ** 4 / (384 * 11000 * 100 * 300 ** 3 / 12) + 1.2 * 2.5e6 / (690 * 30000));
+  s7.sls.shear = false;
+  check('Flèche · flexion seule (0,421 mm)', E.compute(s7).uCase.G.y, 5 * 5 * 2000 ** 4 / (384 * 11000 * 100 * 300 ** 3 / 12));
+
+  // --- Cas 8 : pas de verdict sur données incomplètes
+  const s8 = JSON.parse(JSON.stringify(s7)); s8.b = '';
+  check('Saisie · section incomplète → pas de verdict', E.compute(s8).valid ? 1 : 0, 0);
+  const s9 = JSON.parse(JSON.stringify(s7)); s9.loads.direct = ST.emptyTable();
+  check('Saisie · aucune sollicitation → pas de verdict', E.compute(s9).valid ? 1 : 0, 0);
 
   document.getElementById('out').innerHTML = `<p class="${fails ? 'ko' : 'ok'}" id="summary">${fails ? fails + ' écart(s)' : 'Tous les tests passent'} (${rows.length} contrôles)</p>
     <table><thead><tr><th>Contrôle</th><th>Lignum</th><th>Référence</th><th></th></tr></thead><tbody>${rows.join('')}</tbody></table>`;

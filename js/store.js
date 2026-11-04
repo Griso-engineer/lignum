@@ -31,7 +31,7 @@
       altitudeHigh: false,
       durations: { Q1: 'auto', Q2: 'auto', S: 'auto', W: 'auto', Wu: 'auto' },
       options: { gFav: true, fireLead: 'psi1', seisKmod: 1.1, seisGammaM: 'fund', kcrMode: 'auto', devMz: true },
-      sls: { mode: 'calc', Lref: '', limits: { inst: 300, fin: 250, act: 500 }, uy: {}, uz: {} },
+      sls: { mode: 'calc', preset: 'an-courant', shear: true, wc: 0, Lref: '', limits: { inst: 300, netfin: 200, fin: 125, act: 500 }, uy: {}, uz: {} },
       loads: {
         mode: 'direct', unit: 'daN',
         direct,
@@ -52,6 +52,12 @@
   function upgrade(s) {
     const d = defaultState();
     if (s.lefUp === undefined) { s.lefUp = s.lef; if (s.link) s.link.lefUp = !!s.link.lef; }
+    // anciennes vérifications : limites 300/250/500 conservées, sans flèche d'effort tranchant
+    if (s.sls && s.sls.limits && s.sls.limits.netfin === undefined) {
+      s.sls.limits.netfin = '';
+      s.sls.preset = 'custom';
+      if (s.sls.shear === undefined) s.sls.shear = false;
+    }
     (function merge(dst, src) {
       Object.keys(src).forEach((k) => {
         if (dst[k] === undefined) dst[k] = src[k];
