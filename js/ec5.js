@@ -393,7 +393,6 @@
         };
       }
     });
-    const wc = num(sls.wc);   // contreflèche [mm], dans le plan de h, opposée aux charges permanentes
     const varAct = VAR.filter((c) => uCase[c].y !== 0 || uCase[c].z !== 0);
     // Enveloppe signée : pour chaque sens (+/−) et chaque action dominante, les actions
     // d'accompagnement ne sont retenues que si elles aggravent la flèche dans ce sens ;
@@ -401,8 +400,7 @@
     function slsDir(dir) {
       const g = GPERM.reduce((a, c) => a + uCase[c][dir], 0);
       const gBefore = uCase.PP[dir] + uCase.G[dir];
-      const cw = dir === 'y' ? wc * (g < 0 ? -1 : 1) : 0;    // contreflèche signée
-      const best = { winst: 0, wfin: g * (1 + kdef), wnet: g * (1 + kdef) - cw, wact: g * (1 + kdef) - gBefore, lead: null };
+      const best = { winst: 0, wfin: g * (1 + kdef), wact: g * (1 + kdef) - gBefore, lead: null };
       [1, -1].forEach((sg) => {
         [null].concat(varAct).forEach((L1) => {
           let wi = 0, wf = g * (1 + kdef);
@@ -417,15 +415,15 @@
           if (L1 && sg * wi > Math.abs(best.winst)) best.winst = wi;
           if (sg * wf > Math.abs(best.wfin)) { best.wfin = wf; best.lead = L1; }
           if (sg * (wf - gBefore) > Math.abs(best.wact)) best.wact = wf - gBefore;
-          if (sg * (wf - cw) > Math.abs(best.wnet)) best.wnet = wf - cw;
         });
       });
-      return { winst: best.winst, wfin: best.wfin, wnet: best.wnet, wact: best.wact, ginst: g, lead: best.lead };
+      return { winst: best.winst, wfin: best.wfin, wact: best.wact, ginst: g, lead: best.lead };
     }
-    const lim = Object.assign({ inst: 300, netfin: 200, fin: 125, act: 500 }, sls.limits || {});
+    // sans contreflèche, w_net,fin = w_fin : seuls w_inst(Q), w_fin et la flèche active sont vérifiés
+    const lim = Object.assign({ inst: 300, fin: 200, act: 500 }, sls.limits || {});
     const defl = { y: slsDir('y'), z: slsDir('z') };
     const slsRows = [];
-    [['winst', 'inst', 'w_inst(Q)'], ['wnet', 'netfin', 'w_net,fin = w_fin − w_c'], ['wfin', 'fin', 'w_fin'], ['wact', 'act', 'w_fin − w_inst(PP+G) (fragiles)']].forEach(([k, l, lbl]) => {
+    [['winst', 'inst', 'w_inst(Q)'], ['wfin', 'fin', 'w_fin'], ['wact', 'act', 'w_fin − w_inst(PP+G) (fragiles)']].forEach(([k, l, lbl]) => {
       if (!(num(lim[l]) > 0)) return;            // limite vide = critère non vérifié
       ['y', 'z'].forEach((dir) => {
         const w = Math.abs(defl[dir][k]);
@@ -451,7 +449,7 @@
     return {
       mat, sec, ksys, gM, betac, kfi, kdef, sc, L, lfy, lfz, lef, lefUp, gSign, instC, instF, fire,
       valid, unit: U, cases, uCase, combos, env,
-      sls: { rows: slsRows, max: slsMax, defl, kdef, L: Lsls, mode: sls.mode, shear: sls.mode !== 'input' && sls.shear !== false, wc },
+      sls: { rows: slsRows, max: slsMax, defl, kdef, L: Lsls, mode: sls.mode, shear: sls.mode !== 'input' && sls.shear !== false },
       active: C.active, seis: C.seis, warnings,
       durationOf: (c) => durationOf(s, c), psiOf: (c) => psiOf(s, c)
     };

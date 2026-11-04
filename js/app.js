@@ -8,11 +8,14 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  // NF EN 1995-1-1/NA tableau 7.2 (w_inst(Q), w_net,fin, w_fin) + flèche active L/500 (usage, éléments fragiles)
+  // NF EN 1995-1-1/NA tableau 7.2, éléments SANS contreflèche : w_fin = w_net,fin, donc la limite
+  // applicable à w_fin est celle de w_net,fin (L/200 en bâtiment courant) — cf. guide FCBA § 1.5.2.
+  // Flèche active L/500 : usage (éléments fragiles, DTU).
   const SLS_PRESETS = {
-    'an-courant': { inst: 300, netfin: 200, fin: 125, act: 500 },
-    'an-agricole': { inst: 200, netfin: 150, fin: 100, act: '' },
-    'an-console': { inst: 150, netfin: 100, fin: 62.5, act: 250 }
+    'an-courant': { inst: 300, fin: 200, act: 500 },
+    'an-agricole': { inst: 200, fin: 150, act: '' },
+    'an-console': { inst: 150, fin: 100, act: 250 },
+    'an-chevron': { inst: '', fin: 150, act: '' }
   };
   let db = ST.load();
   let state = db.draft ? ST.upgrade(db.draft) : ST.defaultState();
@@ -196,15 +199,13 @@
       <div class="sub-title" style="margin-top:30px">Flèches — critères et méthode</div>
       <div class="fields">
         ${field('w<sub>inst</sub>(Q) ≤ L /', inp('sls.limits.inst'), '', 'Variables seules, comb. caractéristique.')}
-        ${field('w<sub>net,fin</sub> ≤ L /', inp('sls.limits.netfin'), '', 'w<sub>fin</sub> − contreflèche.')}
         ${field('w<sub>fin</sub> ≤ L /', inp('sls.limits.fin'), '', 'Flèche finale totale.')}
         ${field('Flèche active ≤ L /', inp('sls.limits.act'), '', 'w<sub>fin</sub> − w<sub>inst</sub>(PP+G), éléments fragiles.')}
-        ${field('Préréglage', sel('sls.preset', [['an-courant', 'AN 7.2 — bâtiments courants'], ['an-agricole', 'AN 7.2 — bâtiments agricoles'], ['an-console', 'AN 7.2 — consoles'], ['custom', 'Personnalisé (saisie libre)']]), '', 'Modifier une limite passe en « personnalisé ».')}
+        ${field('Préréglage', sel('sls.preset', [['an-courant', 'AN 7.2 — bâtiments courants'], ['an-agricole', 'AN 7.2 — bâtiments agricoles'], ['an-console', 'AN 7.2 — consoles, porte-à-faux'], ['an-chevron', 'AN 7.2 — chevrons'], ['custom', 'Personnalisé (saisie libre)']]), '', 'Modifier une limite passe en « personnalisé ».')}
       </div>
       <div class="fields wide" style="margin-top:14px">
         ${field('Flèches unitaires', sel('sls.mode', [['calc', 'Calculées : M·L²/(9,6·E·I) — bi-articulée, charge répartie'], ['input', 'Saisies par cas (mm, depuis le modèle)']], { rerender: true }))}
         ${field('Portée de référence', inp('sls.Lref', { ph: 'L' }), 'm', 'Vide = L. Console : 2 × porte-à-faux.')}
-        ${field('Contreflèche w<sub>c</sub>', inp('sls.wc'), 'mm', 'Plan de h, opposée aux charges permanentes.')}
       </div>
       ${state.sls.mode === 'calc' ? `<div style="margin:10px 0 0">${chk('sls.shear', 'Ajouter la flèche due à l\'effort tranchant (1,2·M/(G<sub>mean</sub>·A) — sensible pour les poutres courtes et hautes)')}</div>` : ''}
       <p class="note">Une limite laissée vide désactive le critère correspondant.</p>
@@ -403,7 +404,7 @@
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Flèche</th><th>Direction</th><th class="num">w [mm]</th><th class="num">Limite [mm]</th><th class="num">soit</th><th class="num">Taux</th><th></th><th></th></tr></thead><tbody>
       ${R.sls.rows.map((r) => `<tr><td>${r.label}</td><td>${r.dir === 'y' ? 'plan de h (u<sub>y</sub>)' : 'plan de b (u<sub>z</sub>)'}</td><td class="num">${fmt(r.w, 1)}</td><td class="num">L/${r.limRatio} = ${fmt(r.lim, 1)}</td><td class="num">${r.w > 0 ? 'L/' + Math.round(r.Lratio) : '—'}</td><td class="num"><span class="ratio">${pct(r.ratio)}</span></td><td style="width:120px">${bar(r.ratio)}</td><td>${pill(r.ratio)}</td></tr>`).join('')}
       </tbody></table></div>
-      <p class="note">w<sub>inst</sub>(Q) : combinaison caractéristique (Q<sub>1</sub> + Σψ<sub>0,i</sub>Q<sub>i</sub>). w<sub>fin</sub> = w<sub>inst,G</sub>(1 + k<sub>def</sub>) + w<sub>inst,Q1</sub>(1 + ψ<sub>2,1</sub>k<sub>def</sub>) + Σ w<sub>inst,Qi</sub>(ψ<sub>0,i</sub> + ψ<sub>2,i</sub>k<sub>def</sub>) — NF EN 1995-1-1 § 2.3.2.2. w<sub>net,fin</sub> = w<sub>fin</sub> − w<sub>c</sub> (contreflèche ${fmt(R.sls.wc, 0)} mm). Limites de référence : NF EN 1995-1-1/NA tableau 7.2.${R.sls.shear ? " Flèche d'effort tranchant incluse." : ''}</p>`;
+      <p class="note">w<sub>inst</sub>(Q) : combinaison caractéristique (Q<sub>1</sub> + Σψ<sub>0,i</sub>Q<sub>i</sub>). w<sub>fin</sub> = w<sub>inst,G</sub>(1 + k<sub>def</sub>) + w<sub>inst,Q1</sub>(1 + ψ<sub>2,1</sub>k<sub>def</sub>) + Σ w<sub>inst,Qi</sub>(ψ<sub>0,i</sub> + ψ<sub>2,i</sub>k<sub>def</sub>) — NF EN 1995-1-1 § 2.3.2.2. Sans contreflèche, w<sub>net,fin</sub> = w<sub>fin</sub>. Limites de référence : NF EN 1995-1-1/NA tableau 7.2.${R.sls.shear ? " Flèche d'effort tranchant incluse." : ''}</p>`;
 
     // toutes les combinaisons
     const wasOpen = !!(box.querySelector('details.fold') && box.querySelector('details.fold').open);
@@ -519,6 +520,12 @@
             <li><b>k<sub>h</sub></b> : sur b pour M<sub>z</sub>, sur max(b,h) en traction, k<sub>h</sub> = 1 pour ρ<sub>k</sub> &gt; 700 ; pas de k<sub>h</sub> au feu.</li>
           </ol>
           <p class="note">Hypothèses conservées : poutre bi-articulée sous charge répartie pour les flèches calculées et pour les hypothèses de charges ; σ<sub>m,crit</sub> par l'éq. 6.32 ; cisaillement sur la résultante √(V<sub>y</sub>² + V<sub>z</sub>²).</p>
+          <div class="sub-title">Validation (<a href="tests.html">tests.html</a>)</div>
+          <p style="font-size:14px">Le moteur est comparé à des cas publiés, résultats intermédiaires compris :
+            <b>Swedish Wood</b>, <i>Design of timber structures</i> vol. 3 (2022), ex. 3.1 (flexion, cisaillement), 3.4 (déversement GL30c), 7.1 (flèches et fluage) ;
+            <b>JRC</b>, <i>Structural fire design — worked examples</i> (2014), § 6.1.4 (poutres C24 et GL24h R30, poteaux C24 R30 et R60, section réduite) ;
+            les deux classeurs Excel d'origine ; des contre-exemples d'audit (k<sub>cr</sub>, G favorable, soulèvement).
+            Le guide <b>FCBA</b> d'initiation à la charpente (2013) sert de recoupement : ses tableaux de poteaux sont 5 à 7 % plus prudents que Lignum (hypothèse non documentée) ; ses limites de flèche sans contreflèche (L/300, L/200) sont celles retenues ici.</p>
           <div class="sub-title">Non couvert par Lignum</div>
           <p style="font-size:14px">« Vérifié » signifie vérifié pour les critères listés ci-dessus seulement. Restent à justifier à part : compression perpendiculaire au fil aux appuis (6.1.5), entailles (6.5), assemblages, torsion, vibrations des planchers (7.3), sections non rectangulaires ou variables, maintiens latéraux et point d'application des charges pour le déversement (l<sub>ef</sub> à justifier, éq. 6.32 pour sections rectangulaires), schémas statiques autres que bi-articulés pour les flèches calculées.</p>
         </div>

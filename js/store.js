@@ -31,7 +31,7 @@
       altitudeHigh: false,
       durations: { Q1: 'auto', Q2: 'auto', S: 'auto', W: 'auto', Wu: 'auto' },
       options: { gFav: true, fireLead: 'psi1', seisKmod: 1.1, seisGammaM: 'fund', kcrMode: 'auto', devMz: true },
-      sls: { mode: 'calc', preset: 'an-courant', shear: true, wc: 0, Lref: '', limits: { inst: 300, netfin: 200, fin: 125, act: 500 }, uy: {}, uz: {} },
+      sls: { mode: 'calc', preset: 'an-courant', shear: true, Lref: '', limits: { inst: 300, fin: 200, act: 500 }, uy: {}, uz: {} },
       loads: {
         mode: 'direct', unit: 'daN',
         direct,
@@ -53,11 +53,14 @@
     const d = defaultState();
     if (s.lefUp === undefined) { s.lefUp = s.lef; if (s.link) s.link.lefUp = !!s.link.lef; }
     // anciennes vérifications : limites 300/250/500 conservées, sans flèche d'effort tranchant
-    if (s.sls && s.sls.limits && s.sls.limits.netfin === undefined) {
-      s.sls.limits.netfin = '';
+    if (s.sls && s.sls.limits && s.sls.preset === undefined) {
       s.sls.preset = 'custom';
       if (s.sls.shear === undefined) s.sls.shear = false;
     }
+    if (s.sls && s.sls.limits) { delete s.sls.limits.netfin; delete s.sls.wc; }   // critère retiré
+    // limites de préréglage corrigées (w_fin L/125 → L/200 sans contreflèche) : on réapplique le préréglage
+    const PRE = { 'an-courant': { inst: 300, fin: 200, act: 500 }, 'an-agricole': { inst: 200, fin: 150, act: '' }, 'an-console': { inst: 150, fin: 100, act: 250 } };
+    if (s.sls && PRE[s.sls.preset]) Object.assign(s.sls.limits, PRE[s.sls.preset]);
     (function merge(dst, src) {
       Object.keys(src).forEach((k) => {
         if (dst[k] === undefined) dst[k] = src[k];
