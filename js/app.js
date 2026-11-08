@@ -84,7 +84,7 @@
       const dB = (b - bf) * k, dH = (h - hf) * k;
       const rx = x0 + (nB === 2 ? dB / 2 : nB === 1 ? dB : 0);
       const ry = y0 + (nH === 2 ? dH / 2 : 0);
-      res = `<rect x="${rx}" y="${ry}" width="${bf * k}" height="${hf * k}" fill="none" stroke="#007cfd" stroke-width="1.2" stroke-dasharray="3 2"/>`;
+      res = `<rect x="${rx}" y="${ry}" width="${bf * k}" height="${hf * k}" fill="none" stroke="#fe7c2b" stroke-width="1.2" stroke-dasharray="3 2"/>`;
     }
     return `<svg width="${size + 12}" height="${size}" viewBox="0 0 ${size + 12} ${size}" aria-hidden="true">
       <rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#f6e3c8" stroke="#111" stroke-width="1.2"/>

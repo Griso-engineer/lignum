@@ -26,7 +26,7 @@
     if (f.t > 0 && f.bf > 0 && f.hf > 0) {
       const nB = +s.fire.facesB, nH = +s.fire.facesH, dB = (b - f.bf) * k, dH = (h - f.hf) * k;
       const rx = x0 + (nB === 2 ? dB / 2 : nB === 1 ? dB : 0), ry = y0 + (nH === 2 ? dH / 2 : 0);
-      res = `<rect x="${rx}" y="${ry}" width="${f.bf * k}" height="${f.hf * k}" fill="none" stroke="#007cfd" stroke-width="1.2" stroke-dasharray="3 2"/>`;
+      res = `<rect x="${rx}" y="${ry}" width="${f.bf * k}" height="${f.hf * k}" fill="none" stroke="#fe7c2b" stroke-width="1.2" stroke-dasharray="3 2"/>`;
     }
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
       <rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#f6e3c8" stroke="#111" stroke-width="1.2"/>${res}
@@ -264,7 +264,7 @@
     const css = `body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111}
       h1{font-size:15pt;margin:4pt 0}h2{font-size:10.5pt;border-top:1pt solid #111;padding-top:3pt;margin:12pt 0 4pt}h3{font-size:9.5pt;margin:8pt 0 3pt}
       table{border-collapse:collapse;width:100%;font-size:8.5pt;margin:2pt 0 5pt}th,td{border-bottom:.5pt solid #bbb;padding:2pt 4pt;text-align:left;vertical-align:top}
-      th{border-bottom:1pt solid #111}td.num,th.num{text-align:right}.n{color:#007cfd;margin-right:6pt}.logo-s{color:#007cfd;font-weight:bold;font-size:14pt}
+      th{border-bottom:1pt solid #111}td.num,th.num{text-align:right}.n{color:#fe7c2b;margin-right:6pt}.logo-s{color:#fe7c2b;font-weight:bold;font-size:14pt}
       table.hd td{border:0;border-bottom:1.2pt solid #111;font-size:8pt;color:#555}table.cc td{border:1pt solid #111;font-size:10pt;padding:5pt}
       .rp-ok{color:#1f7a4d;font-weight:bold}.rp-ko{color:#c62f29;font-weight:bold}.f{color:#555}tr.gov td{font-weight:bold}p{margin:0 0 4pt}`;
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
